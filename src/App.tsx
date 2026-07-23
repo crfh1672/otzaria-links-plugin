@@ -92,7 +92,9 @@ export default function App() {
     config: PluginConfig,
     sourceText: string,
     rashiText?: string,
-    tosafotText?: string
+    tosafotText?: string,
+    rashiLinks?: any[],
+    tosafotLinks?: any[]
   ) => {
     try {
       const parsed = runLinkingParser(
@@ -100,7 +102,9 @@ export default function App() {
         sourceText,
         config,
         rashiText,
-        tosafotText
+        tosafotText,
+        rashiLinks,
+        tosafotLinks
       );
 
       const sessionId = `session_${Date.now()}`;

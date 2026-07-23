@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BookNode, PluginConfig, TANAKH_BOOKS, SHAS_TRACTATES } from '../types';
-import { fetchLibraryTree, fetchBookContent, notifyError } from '../utils/otzariaBridge';
+import { fetchLibraryTree, fetchBookContent, fetchBookLinks, notifyError } from '../utils/otzariaBridge';
 import {
   Search,
   Upload,
@@ -23,7 +23,9 @@ interface SetupModeProps {
     config: PluginConfig,
     sourceText: string,
     rashiText?: string,
-    tosafotText?: string
+    tosafotText?: string,
+    rashiLinks?: any[],
+    tosafotLinks?: any[]
   ) => void;
 }
 
@@ -122,12 +124,15 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
 
       let rashiText: string | undefined = undefined;
       let tosafotText: string | undefined = undefined;
+      let rashiLinks: any[] = [];
+      let tosafotLinks: any[] = [];
 
       // Fetch secondary source files (Rashi and Tosafot for target book if available)
       try {
         const rawRashi = await fetchBookContent(`רש"י על ${targetBook}`);
         if (rawRashi && !rawRashi.includes('לא נמצא תוכן עבור ספר זה')) {
           rashiText = rawRashi;
+          rashiLinks = await fetchBookLinks(`רש"י על ${targetBook}`);
         }
       } catch {
         rashiText = undefined;
@@ -137,6 +142,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
         const rawTosafot = await fetchBookContent(`תוספות על ${targetBook}`);
         if (rawTosafot && !rawTosafot.includes('לא נמצא תוכן עבור ספר זה')) {
           tosafotText = rawTosafot;
+          tosafotLinks = await fetchBookLinks(`תוספות על ${targetBook}`);
         }
       } catch {
         tosafotText = undefined;
@@ -155,7 +161,9 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
         config,
         sourceText,
         rashiText,
-        tosafotText
+        tosafotText,
+        rashiLinks,
+        tosafotLinks
       );
     } catch (err) {
       console.error(err);

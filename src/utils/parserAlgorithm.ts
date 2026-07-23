@@ -173,7 +173,9 @@ export function runLinkingParser(
   sourceRaw: string,
   config: PluginConfig,
   rashiRaw?: string,
-  tosafotRaw?: string
+  tosafotRaw?: string,
+  rashiLinks?: any[],
+  tosafotLinks?: any[]
 ): {
   links: OtzariaLink[];
   commentaryLines: string[];
@@ -364,7 +366,17 @@ export function runLinkingParser(
 
       // If secondary source line was found, but primary source line wasn't matched directly:
       if (matchedSecondaryLineNum && !matchedSourceLineNum) {
-        matchedSourceLineNum = previousLink?.line_index_2 || lastMatchedSrcLineIndex || (srcSeg ? srcSeg.startLine : 1);
+        let mappedPrimaryLine = previousLink?.line_index_2 || lastMatchedSrcLineIndex || (srcSeg ? srcSeg.startLine : 1);
+        
+        if (targetSecondary === 'rashi' && rashiLinks && rashiLinks.length > 0) {
+           const link = rashiLinks.find(l => l.line_index_1 === matchedSecondaryLineNum);
+           if (link) mappedPrimaryLine = link.line_index_2;
+        } else if (targetSecondary === 'tosafot' && tosafotLinks && tosafotLinks.length > 0) {
+           const link = tosafotLinks.find(l => l.line_index_1 === matchedSecondaryLineNum);
+           if (link) mappedPrimaryLine = link.line_index_2;
+        }
+
+        matchedSourceLineNum = mappedPrimaryLine;
         isInherited = true;
       }
 

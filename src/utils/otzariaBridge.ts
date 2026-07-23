@@ -1,5 +1,5 @@
 import { BookNode } from '../types';
-import { MOCK_BOOK_CONTENTS, MOCK_LIBRARY_TREE } from '../data/otzariaLibraryMock';
+import { MOCK_BOOK_CONTENTS, MOCK_LIBRARY_TREE, MOCK_BOOK_LINKS } from '../data/otzariaLibraryMock';
 
 declare global {
   interface Window {
@@ -142,6 +142,20 @@ export async function notifySuccess(message: string): Promise<void> {
       return;
     } catch {}
   }
+}
+
+export async function fetchBookLinks(bookId: string): Promise<any[]> {
+  if (isOtzariaAvailable()) {
+    try {
+      const res = await window.Otzaria!.call('library.getBookLinks', { bookId });
+      if (res && res.success && Array.isArray(res.data)) {
+        return res.data;
+      }
+    } catch (e) {
+      console.warn(`Otzaria getBookLinks failed for ${bookId}`, e);
+    }
+  }
+  return MOCK_BOOK_LINKS[bookId] || [];
 }
 
 export async function notifyError(message: string): Promise<void> {
