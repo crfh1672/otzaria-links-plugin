@@ -102,68 +102,68 @@ ${document.documentElement.innerHTML}
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl max-w-lg w-full overflow-hidden text-right">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-[var(--color-surface)] text-[var(--color-on-surface)] rounded-2xl border border-[var(--color-outline-variant)] shadow-xl max-w-lg w-full overflow-hidden text-right">
         {/* Header */}
-        <div className="p-4 bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-bold text-sm">
-            <Code className="w-4 h-4" />
+        <div className="p-4 bg-[var(--color-surface-container-high)] border-b border-[var(--color-outline)] flex items-center justify-between">
+          <div className="flex items-center gap-2 text-[var(--color-primary)] font-bold text-sm">
+            <Code className="w-4.5 h-4.5" />
             <span>קימפול וייצוא התוסף עבור אוצריא ו-GitHub</span>
           </div>
           <button
             onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-md"
+            className="p-1 text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)] rounded-lg transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-5 space-y-4 text-xs text-slate-700 dark:text-slate-300">
-          <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 p-3.5 rounded-lg space-y-1.5">
-            <h4 className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+        <div className="p-5 space-y-4 text-xs text-[var(--color-on-surface)] bg-[var(--color-surface-container-low)]">
+          <div className="bg-[var(--color-primary-subtle)] border border-[var(--color-outline)] p-3.5 rounded-xl space-y-1.5">
+            <h4 className="font-bold text-[var(--color-primary)] flex items-center gap-1.5">
               <Github className="w-4 h-4" />
               <span>תאימות מלאה להוראות SDK תוספי אוצריא</span>
             </h4>
-            <p className="text-amber-800 dark:text-amber-300/90 leading-relaxed">
-              התוסף מוכן לייצוא כחבילת <code className="font-mono bg-amber-100 dark:bg-amber-900 px-1 py-0.5 rounded">.otzplugin</code> עבור התקנה ישרות באוצריא, או כקובץ HTML בודד מקומפל המתאים ל-GitHub Releases ו-CI Actions.
+            <p className="text-[var(--color-on-surface-variant)] leading-relaxed">
+              התוסף מוכן לייצוא כחבילת <code className="font-mono bg-[var(--color-surface)] px-1 py-0.5 rounded-md border border-[var(--color-outline)]">.otzplugin</code> עבור התקנה ישרות באוצריא, או כקובץ HTML בודד מקומפל המתאים ל-GitHub Releases ו-CI Actions.
             </p>
           </div>
 
           <div className="space-y-3 pt-2">
-            <div className="p-3.5 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+            <div className="p-3.5 bg-[var(--color-surface)] rounded-xl border border-[var(--color-outline-variant)] flex items-center justify-between gap-3 shadow-2xs">
               <div>
-                <h5 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                  <FileCode className="w-4 h-4 text-indigo-500" />
+                <h5 className="font-bold text-[var(--color-on-surface)] flex items-center gap-1.5">
+                  <FileCode className="w-4 h-4 text-[var(--color-primary)]" />
                   <span>קובץ .otzplugin עבור התקנה באוצריא</span>
                 </h5>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                <p className="text-[11px] text-[var(--color-on-surface-variant)] mt-0.5">
                   כולל manifest.json מעודכן, הרשאות SDK v1.x וקובץ הכניסה
                 </p>
               </div>
               <button
                 onClick={handleDownloadOtzpluginZip}
                 disabled={downloading}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors shadow-xs shrink-0"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:opacity-90 rounded-xl transition-all shadow-2xs shrink-0"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>הורד .otzplugin</span>
               </button>
             </div>
 
-            <div className="p-3.5 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+            <div className="p-3.5 bg-[var(--color-surface)] rounded-xl border border-[var(--color-outline-variant)] flex items-center justify-between gap-3 shadow-2xs">
               <div>
-                <h5 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                  <Code className="w-4 h-4 text-emerald-500" />
+                <h5 className="font-bold text-[var(--color-on-surface)] flex items-center gap-1.5">
+                  <Code className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   <span>קובץ HTML בודד (Single HTML Bundle)</span>
                 </h5>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                <p className="text-[11px] text-[var(--color-on-surface-variant)] mt-0.5">
                   דף אינטרנט עצמאי שרץ בכל דפדפן או כתוסף ב-WebView
                 </p>
               </div>
               <button
                 onClick={handleDownloadSingleHtml}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors shadow-xs shrink-0"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 font-bold bg-emerald-700 text-white dark:bg-emerald-600 hover:opacity-90 rounded-xl transition-all shadow-2xs shrink-0"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>הורד HTML בודד</span>
@@ -173,10 +173,10 @@ ${document.documentElement.innerHTML}
         </div>
 
         {/* Footer */}
-        <div className="p-3 bg-slate-100 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 text-left">
+        <div className="p-3 bg-[var(--color-surface-container-high)] border-t border-[var(--color-outline)] text-left">
           <button
             onClick={onClose}
-            className="px-4 py-1.5 text-xs font-medium bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-300 transition-colors"
+            className="px-4 py-1.5 text-xs font-semibold bg-[var(--color-secondary-subtle)] text-[var(--color-on-surface)] rounded-xl hover:bg-[var(--color-outline-variant)] border border-[var(--color-outline)] transition-colors"
           >
             סגור
           </button>

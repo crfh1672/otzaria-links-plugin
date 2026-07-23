@@ -16,29 +16,74 @@ export default function App() {
   const [showProjectsModal, setShowProjectsModal] = useState(false);
   const [showHtmlExporterModal, setShowHtmlExporterModal] = useState(false);
 
-  // Listen for Otzaria plugin events (plugin.boot, theme.changed)
+  // Listen for Otzaria plugin events (plugin.boot, theme.changed) and fetch initial theme
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.Otzaria?.on) {
-      window.Otzaria.on('plugin.boot', (payload: any) => {
-        if (payload?.theme?.colorScheme) {
-          applyThemeColors(payload.theme.colorScheme);
-        }
-      });
+    const applyTheme = (theme: any) => {
+      if (!theme || !theme.colorScheme) return;
+      const cs = theme.colorScheme;
+      const r = document.documentElement;
 
-      window.Otzaria.on('theme.changed', (theme: any) => {
-        if (theme?.colorScheme) {
-          applyThemeColors(theme.colorScheme);
+      if (cs.primary) r.style.setProperty('--color-primary', cs.primary);
+      if (cs.onPrimary) r.style.setProperty('--color-on-primary', cs.onPrimary);
+      if (cs.secondary) r.style.setProperty('--color-secondary', cs.secondary);
+      if (cs.onSecondary) r.style.setProperty('--color-on-secondary', cs.onSecondary);
+      if (cs.secondaryContainer) r.style.setProperty('--color-secondary-container', cs.secondaryContainer);
+      if (cs.onSecondaryContainer) r.style.setProperty('--color-on-secondary-container', cs.onSecondaryContainer);
+      if (cs.surface) r.style.setProperty('--color-surface', cs.surface);
+      if (cs.onSurface) r.style.setProperty('--color-on-surface', cs.onSurface);
+      if (cs.surfaceContainerHigh) r.style.setProperty('--color-surface-container-high', cs.surfaceContainerHigh);
+      if (cs.surfaceContainerHighest) r.style.setProperty('--color-surface-container-highest', cs.surfaceContainerHighest);
+      if (cs.error) r.style.setProperty('--color-error', cs.error);
+      if (cs.onError) r.style.setProperty('--color-on-error', cs.onError);
+      if (cs.outline) r.style.setProperty('--color-outline', cs.outline);
+
+      const hexToRgba = (hex: string, alpha: number) => {
+        if (!hex || typeof hex !== 'string' || !hex.startsWith('#')) return `rgba(138, 75, 39, ${alpha})`;
+        const red = parseInt(hex.slice(1, 3), 16) || 0;
+        const green = parseInt(hex.slice(3, 5), 16) || 0;
+        const blue = parseInt(hex.slice(5, 7), 16) || 0;
+        return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+      };
+
+      if (cs.primary) r.style.setProperty('--color-primary-subtle', hexToRgba(cs.primary, 0.12));
+      if (cs.secondary) r.style.setProperty('--color-secondary-subtle', hexToRgba(cs.secondary, 0.12));
+
+      document.body.classList.toggle('dark-mode', theme.mode === 'dark');
+
+      if (theme.typography) {
+        const t = theme.typography;
+        if (t.fontFamily) {
+          r.style.setProperty('--font-main', `'${t.fontFamily}', 'FrankRuhlCLM', 'David', serif`);
         }
-      });
+        if (t.fontSize) {
+          r.style.setProperty('--font-size-base', `${t.fontSize}px`);
+        }
+        if (t.lineHeight) {
+          r.style.setProperty('--line-height', String(t.lineHeight));
+        }
+      }
+    };
+
+    if (typeof window !== 'undefined' && window.Otzaria) {
+      if (window.Otzaria.on) {
+        window.Otzaria.on('plugin.boot', (payload: any) => {
+          if (payload?.theme) applyTheme(payload.theme);
+        });
+
+        window.Otzaria.on('theme.changed', (theme: any) => {
+          if (theme) applyTheme(theme);
+        });
+      }
+
+      if (window.Otzaria.call) {
+        window.Otzaria.call('app.getTheme').then(res => {
+          if (res && res.success && res.data) {
+            applyTheme(res.data);
+          }
+        }).catch(() => {});
+      }
     }
   }, []);
-
-  const applyThemeColors = (cs: any) => {
-    const root = document.documentElement;
-    if (cs.primary) root.style.setProperty('--color-primary', cs.primary);
-    if (cs.surface) root.style.setProperty('--color-surface', cs.surface);
-    if (cs.onSurface) root.style.setProperty('--color-on-surface', cs.onSurface);
-  };
 
   // Run the 5-Step Parser algorithm and switch to Edit Mode
   const handleRunAlgorithm = (

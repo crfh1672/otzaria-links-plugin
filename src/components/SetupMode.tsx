@@ -46,7 +46,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
   const [category, setCategory] = useState<'tanakh' | 'shas'>('tanakh');
   const [targetBook, setTargetBook] = useState<string>(TANAKH_BOOKS[0]);
   const [ignoreShamInShas, setIgnoreShamInShas] = useState<boolean>(false);
-  const [delimiter, setDelimiter] = useState<string>('.');
+  const [delimiter, setDelimiter] = useState<string>('');
 
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -123,18 +123,23 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
       let rashiText: string | undefined = undefined;
       let tosafotText: string | undefined = undefined;
 
-      // In Shas mode, fetch secondary source files (Rashi and Tosafot for tractate)
-      if (category === 'shas') {
-        try {
-          rashiText = await fetchBookContent(`רש"י על ${targetBook}`);
-        } catch {
-          rashiText = undefined;
+      // Fetch secondary source files (Rashi and Tosafot for target book if available)
+      try {
+        const rawRashi = await fetchBookContent(`רש"י על ${targetBook}`);
+        if (rawRashi && !rawRashi.includes('לא נמצא תוכן עבור ספר זה')) {
+          rashiText = rawRashi;
         }
-        try {
-          tosafotText = await fetchBookContent(`תוספות על ${targetBook}`);
-        } catch {
-          tosafotText = undefined;
+      } catch {
+        rashiText = undefined;
+      }
+
+      try {
+        const rawTosafot = await fetchBookContent(`תוספות על ${targetBook}`);
+        if (rawTosafot && !rawTosafot.includes('לא נמצא תוכן עבור ספר זה')) {
+          tosafotText = rawTosafot;
         }
+      } catch {
+        tosafotText = undefined;
       }
 
       const config: PluginConfig = {
@@ -182,36 +187,36 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
         {node.path !== '/' && (
           <button
             onClick={() => toggleExpand(node.path)}
-            className="flex items-center gap-1.5 w-full text-right py-1 px-2 hover:bg-slate-200/60 dark:hover:bg-slate-700/50 rounded-md text-sm font-medium text-slate-800 dark:text-slate-200 transition-colors"
+            className="flex items-center gap-2 w-full text-right py-1.5 px-2 hover:bg-[var(--color-secondary-subtle)] rounded-lg text-sm font-semibold text-[var(--color-on-surface)] transition-colors"
           >
             {isExpanded ? (
-              <ChevronLeft className="w-4 h-4 text-slate-500 shrink-0" />
+              <ChevronLeft className="w-4 h-4 text-[var(--color-on-surface-variant)] shrink-0" />
             ) : (
-              <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+              <ChevronRight className="w-4 h-4 text-[var(--color-on-surface-variant)] shrink-0" />
             )}
             {isExpanded ? (
-              <FolderOpen className="w-4 h-4 text-amber-600 shrink-0" />
+              <FolderOpen className="w-4.5 h-4.5 text-[#D99B56] shrink-0" />
             ) : (
-              <Folder className="w-4 h-4 text-amber-500 shrink-0" />
+              <Folder className="w-4.5 h-4.5 text-[#D99B56] shrink-0" />
             )}
             <span className="truncate">{node.title}</span>
           </button>
         )}
 
         {(isExpanded || node.path === '/') && (
-          <div className="mr-3 border-r border-slate-300/60 dark:border-slate-700/60 pr-1 py-0.5 space-y-0.5">
+          <div className="mr-3 border-r border-[var(--color-outline)] pr-1.5 py-0.5 space-y-0.5">
             {node.categories?.map(child => renderTreeNode(child))}
             {filteredBooks.map(book => (
               <button
                 key={book.bookId}
                 onClick={() => handleSelectBookFromTree(book.bookId, book.title)}
-                className={`flex items-center gap-2 w-full text-right py-1.2 px-2.5 rounded-md text-xs font-medium transition-all ${
+                className={`flex items-center gap-2 w-full text-right py-1.5 px-2.5 rounded-lg text-xs font-medium transition-all ${
                   selectedBookTitle === book.title
-                    ? 'bg-indigo-600 text-white shadow-sm font-semibold'
-                    : 'hover:bg-slate-200/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                    ? 'bg-[var(--color-primary)] text-[var(--color-on-primary)] shadow-2xs font-bold'
+                    : 'hover:bg-[var(--color-secondary-subtle)] text-[var(--color-on-surface)]'
                 }`}
               >
-                <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                <BookOpen className="w-3.5 h-3.5 shrink-0 opacity-80" />
                 <span className="truncate">{book.title}</span>
               </button>
             ))}
@@ -226,26 +231,26 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
       {/* Split Screen Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
-        {/* Right Pane: Book Browser (6 Cols) */}
-        <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col h-[620px] overflow-hidden">
+        {/* Right Pane: Book Browser (7 Cols) */}
+        <div className="lg:col-span-7 bg-[var(--color-surface)] text-[var(--color-on-surface)] rounded-2xl shadow-xs border border-[var(--color-outline-variant)] flex flex-col h-[620px] overflow-hidden">
           {/* Top Bar of Right Pane */}
-          <div className="p-3.5 bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div className="p-3.5 bg-[var(--color-surface-container-high)] border-b border-[var(--color-outline)] flex flex-wrap items-center justify-between gap-2 shrink-0">
             <div className="flex items-center gap-2 flex-1 min-w-[200px]">
               <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2" />
+                <Search className="w-4 h-4 text-[var(--color-on-surface-variant)] absolute right-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="חיפוש מהיר בספרים..."
-                  className="w-full pr-8 pl-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100"
+                  className="w-full pr-8 pl-3 py-1.5 text-xs bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-on-surface)]"
                 />
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 rounded-lg transition-colors border border-slate-300/80 dark:border-slate-600">
-                <Upload className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-secondary-subtle)] hover:bg-[var(--color-outline-variant)] text-[var(--color-on-surface)] rounded-lg transition-colors border border-[var(--color-outline)]">
+                <Upload className="w-3.5 h-3.5 text-[var(--color-primary)]" />
                 <span>ייבוא TXT חיצוני</span>
                 <input
                   type="file"
@@ -261,7 +266,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
                     setSelectedBookTitle(null);
                     setCommentaryContent('');
                   }}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 hover:bg-amber-200 rounded-lg transition-colors border border-amber-300/50"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-[var(--color-primary-subtle)] text-[var(--color-primary)] hover:opacity-90 rounded-lg transition-colors border border-[var(--color-outline)]"
                   title="חזור לעץ הספרים"
                 >
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -272,27 +277,27 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
           </div>
 
           {/* Right Pane Body: Tree or Preview */}
-          <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50 dark:bg-slate-900/50">
+          <div className="flex-1 overflow-y-auto p-4 bg-[var(--color-surface-container-low)]">
             {selectedBookTitle ? (
               <div className="space-y-3">
-                <div className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-950/40 p-3 rounded-lg border border-indigo-200 dark:border-indigo-900">
+                <div className="flex items-center justify-between bg-[var(--color-primary-subtle)] p-3 rounded-xl border border-[var(--color-outline)]">
                   <div className="flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <FileText className="w-5 h-5 text-[var(--color-primary)]" />
                     <div>
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                      <h4 className="text-sm font-bold text-[var(--color-on-surface)]">
                         {selectedBookTitle}
                       </h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                      <p className="text-xs text-[var(--color-on-surface-variant)]">
                         {commentaryContent.split(/\r?\n/).length} שורות נטענו
                       </p>
                     </div>
                   </div>
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 </div>
 
-                <div className="bg-white dark:bg-slate-950 p-4 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-mono leading-relaxed text-slate-700 dark:text-slate-300 max-h-[460px] overflow-y-auto whitespace-pre-wrap">
+                <div className="bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-outline)] text-xs font-serif leading-relaxed text-[var(--color-on-surface)] max-h-[460px] overflow-y-auto whitespace-pre-wrap">
                   {loadingBookContent ? (
-                    <div className="py-12 text-center text-slate-400">טוען תוכן ספר...</div>
+                    <div className="py-12 text-center text-[var(--color-on-surface-variant)]">טוען תוכן ספר...</div>
                   ) : (
                     commentaryContent.slice(0, 3000) + (commentaryContent.length > 3000 ? '\n\n...[המשך הספר נטען במלואו בעת הריצה]...' : '')
                   )}
@@ -300,15 +305,15 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
               </div>
             ) : (
               <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3 px-1">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--color-on-surface-variant)] mb-3 px-1">
                   עץ הספרים באוצריא
                 </h3>
                 {loadingTree ? (
-                  <div className="py-12 text-center text-slate-400 text-xs">טוען את עץ הספרייה...</div>
+                  <div className="py-12 text-center text-[var(--color-on-surface-variant)] text-xs">טוען את עץ הספרייה...</div>
                 ) : tree ? (
                   renderTreeNode(tree)
                 ) : (
-                  <div className="text-xs text-slate-500 p-4">לא ניתן לטעון את עץ הספרים</div>
+                  <div className="text-xs text-[var(--color-on-surface-variant)] p-4">לא ניתן לטעון את עץ הספרים</div>
                 )}
               </div>
             )}
@@ -316,10 +321,10 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
         </div>
 
         {/* Left Pane: Configuration & Settings (5 Cols) */}
-        <div className="lg:col-span-5 bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col h-[620px] overflow-hidden">
-          <div className="p-3.5 bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2">
-            <Settings2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+        <div className="lg:col-span-5 bg-[var(--color-surface)] text-[var(--color-on-surface)] rounded-2xl shadow-xs border border-[var(--color-outline-variant)] flex flex-col h-[620px] overflow-hidden">
+          <div className="p-3.5 bg-[var(--color-surface-container-high)] border-b border-[var(--color-outline)] flex items-center gap-2">
+            <Settings2 className="w-4 h-4 text-[var(--color-primary)]" />
+            <h3 className="text-sm font-bold text-[var(--color-on-surface)]">
               אפיון והגדרות מיפוי
             </h3>
           </div>
@@ -327,17 +332,17 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
           <div className="p-5 flex-1 overflow-y-auto space-y-6">
             {/* Source Category Selection */}
             <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+              <label className="block text-xs font-bold text-[var(--color-on-surface)]">
                 קטגוריית מקור:
               </label>
-              <div className="grid grid-cols-2 gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
+              <div className="grid grid-cols-2 gap-2 bg-[var(--color-surface-container-high)] p-1 rounded-xl border border-[var(--color-outline)]">
                 <button
                   type="button"
                   onClick={() => setCategory('tanakh')}
-                  className={`py-2 px-3 text-xs font-bold rounded-md transition-all ${
+                  className={`py-2 px-3 text-xs font-bold rounded-lg transition-all ${
                     category === 'tanakh'
-                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      ? 'bg-[var(--color-surface)] text-[var(--color-primary)] shadow-2xs'
+                      : 'text-[var(--color-on-surface-variant)] hover:text-[var(--color-on-surface)]'
                   }`}
                 >
                   תנ"ך
@@ -345,10 +350,10 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
                 <button
                   type="button"
                   onClick={() => setCategory('shas')}
-                  className={`py-2 px-3 text-xs font-bold rounded-md transition-all ${
+                  className={`py-2 px-3 text-xs font-bold rounded-lg transition-all ${
                     category === 'shas'
-                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      ? 'bg-[var(--color-surface)] text-[var(--color-primary)] shadow-2xs'
+                      : 'text-[var(--color-on-surface-variant)] hover:text-[var(--color-on-surface)]'
                   }`}
                 >
                   ש"ס (תלמוד בבלי)
@@ -358,13 +363,13 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
 
             {/* Target Book Dropdown */}
             <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+              <label className="block text-xs font-bold text-[var(--color-on-surface)]">
                 בחירת ספר המטרה המקושר:
               </label>
               <select
                 value={targetBook}
                 onChange={e => setTargetBook(e.target.value)}
-                className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                className="w-full p-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-xl text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] font-medium"
               >
                 {(category === 'tanakh' ? TANAKH_BOOKS : SHAS_TRACTATES).map(book => (
                   <option key={book} value={book}>
@@ -375,19 +380,19 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
             </div>
 
             {/* Commentary Characterization Options */}
-            <div className="space-y-4 pt-3 border-t border-slate-200 dark:border-slate-800">
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <div className="space-y-4 pt-3 border-t border-[var(--color-outline)]">
+              <h4 className="text-xs font-bold text-[var(--color-on-surface-variant)] uppercase tracking-wider">
                 איפיון ספר הפרשנות
               </h4>
 
               {/* Toggle for 'שם' in Shas */}
               {category === 'shas' && (
-                <div className="flex items-center justify-between gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700/80">
+                <div className="flex items-center justify-between gap-3 p-3 bg-[var(--color-surface-container-low)] rounded-xl border border-[var(--color-outline)]">
                   <div className="space-y-0.5">
-                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                    <span className="block text-xs font-bold text-[var(--color-on-surface)]">
                       האם המילה 'שם' משמשת כהפניה לדף בגמרא?
                     </span>
-                    <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="block text-[11px] text-[var(--color-on-surface-variant)]">
                       במקום ירושת קישור ישיר מהשורה הקודמת
                     </span>
                   </div>
@@ -396,11 +401,11 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
                     type="button"
                     onClick={() => setIgnoreShamInShas(!ignoreShamInShas)}
                     className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      ignoreShamInShas ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
+                      ignoreShamInShas ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-outline)]'
                     }`}
                   >
                     <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
                         ignoreShamInShas ? '-translate-x-5' : 'translate-x-0'
                       }`}
                     />
@@ -410,28 +415,28 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
 
               {/* Dibur Hamatchil Delimiter */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                  תו סיום דיבור המתחיל (ד"ה):
+                <label className="block text-xs font-bold text-[var(--color-on-surface)]">
+                  תו סיום דיבור המתחיל (ד"ה) [רשות]:
                 </label>
                 <input
                   type="text"
                   value={delimiter}
                   onChange={e => setDelimiter(e.target.value)}
-                  placeholder="לדוגמה: . או .:"
-                  className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="לדוגמה: . או - (השאר ריק לזיהוי אוטומטי לפי התאמה ארוכה)"
+                  className="w-full p-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-xl text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                 />
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  המחרוזת מתחילת השורה עד לתו זה תיחשב כדיבור המתחיל
+                <p className="text-[11px] text-[var(--color-on-surface-variant)]">
+                  אם לא יוגדר תו סיום, האלגוריתם יזהה אוטומטית את ההתאמה הארוכה ביותר של תחילת המשפט במקור.
                 </p>
               </div>
             </div>
           </div>
 
           {/* Bottom Left Run Button */}
-          <div className="p-4 bg-slate-100 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 shrink-0 flex items-center justify-between">
-            <div className="text-xs text-slate-500 dark:text-slate-400">
+          <div className="p-4 bg-[var(--color-surface-container-high)] border-t border-[var(--color-outline)] shrink-0 flex items-center justify-between">
+            <div className="text-xs text-[var(--color-on-surface-variant)]">
               {selectedBookTitle ? (
-                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
                   ✓ מוכן להרצת האלגוריתם
                 </span>
               ) : (
@@ -443,7 +448,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
               type="button"
               onClick={handleRun}
               disabled={!selectedBookTitle || isProcessing}
-              className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-md transition-all"
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:opacity-90 active:opacity-100 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl shadow-xs transition-all"
             >
               {isProcessing ? (
                 <span>מעבד מיפוי...</span>
