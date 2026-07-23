@@ -293,14 +293,22 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
           dangerouslySetInnerHTML={{ __html: formattedHtml }}
         />
 
-        {/* Secondary Source Sub-pane indicator */}
+        {/* Secondary Source Sub-pane */}
         {linkObj?.secondaryTarget && (
-          <div className="mt-2 p-2 bg-amber-50/80 dark:bg-amber-950/30 rounded border border-amber-200 dark:border-amber-900/50 text-[11px] text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span>
-              מקושר למקור משני ({linkObj.secondaryTarget === 'rashi' ? 'רש"י' : 'תוספות'}
-              {linkObj.secondary_line_index ? `, שורה ${linkObj.secondary_line_index}` : ''})
-            </span>
+          <div className={`mt-2 p-2 ${linkObj.secondaryTarget === 'rashi' ? 'bg-amber-50/80 dark:bg-amber-950/30 border-amber-200/80 dark:border-amber-900/40 text-amber-900 dark:text-amber-300' : 'bg-indigo-50/80 dark:bg-indigo-950/30 border-indigo-200/80 dark:border-indigo-900/40 text-indigo-900 dark:text-indigo-300'} rounded-lg border text-[11px] flex flex-col gap-1.5`}>
+            <div className="flex items-center gap-1.5 font-bold">
+              <Layers className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                מקור משני: {linkObj.secondaryTarget === 'rashi' ? 'רש"י' : 'תוספות'}
+                {linkObj.secondary_line_index ? ` (שורה ${linkObj.secondary_line_index})` : ''}
+              </span>
+            </div>
+            {linkObj.secondary_line_index && (
+              <p className="text-[var(--color-on-surface)] font-serif leading-tight mt-0.5">
+                {linkObj.secondaryTarget === 'rashi' && rashiLines ? rashiLines[linkObj.secondary_line_index - 1] : ''}
+                {linkObj.secondaryTarget === 'tosafot' && tosafotLines ? tosafotLines[linkObj.secondary_line_index - 1] : ''}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -444,29 +452,6 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
                     <p className="text-xs font-serif leading-relaxed text-[var(--color-on-surface)]">
                       {srcLine}
                     </p>
-
-                    {/* If secondary source line content exists for this header */}
-                    {rashiLines && rashiLines[srcLineIdx1 - 1] && (
-                      <div className="mt-2 p-2 bg-amber-50/80 dark:bg-amber-950/30 rounded-lg border border-amber-200/80 dark:border-amber-900/40 text-[11px]">
-                        <span className="font-bold text-amber-900 dark:text-amber-300 block mb-0.5">
-                          מקור משני (רש"י):
-                        </span>
-                        <p className="text-[var(--color-on-surface)] font-serif leading-tight">
-                          {rashiLines[srcLineIdx1 - 1]}
-                        </p>
-                      </div>
-                    )}
-
-                    {tosafotLines && tosafotLines[srcLineIdx1 - 1] && (
-                      <div className="mt-2 p-2 bg-indigo-50/80 dark:bg-indigo-950/30 rounded-lg border border-indigo-200/80 dark:border-indigo-900/40 text-[11px]">
-                        <span className="font-bold text-indigo-900 dark:text-indigo-300 block mb-0.5">
-                          מקור משני (תוספות):
-                        </span>
-                        <p className="text-[var(--color-on-surface)] font-serif leading-tight">
-                          {tosafotLines[srcLineIdx1 - 1]}
-                        </p>
-                      </div>
-                    )}
                   </div>
 
                   {/* Right Side: Linked Commentary Lines Stacked (7 Cols) */}
