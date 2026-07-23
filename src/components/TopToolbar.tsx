@@ -35,7 +35,31 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
       const zip = new JSZip();
 
       // 1. Generate _links.json
-      const linksJsonContent = JSON.stringify(session.links, null, 2);
+      const exportedLinks: any[] = [];
+      session.links.forEach(link => {
+        // Primary Source Link
+        exportedLinks.push({
+          line_index_1: link.line_index_1,
+          line_index_2: link.line_index_2,
+          heRef_2: link.heRef_2,
+          path_2: link.path_2,
+          connection_type: link.connection_type
+        });
+
+        // Secondary Source Link
+        if (link.secondaryTarget && link.secondary_line_index) {
+          const secondaryTitle = link.secondaryTarget === 'rashi' ? `רש"י על ${sourceName}` : `תוספות על ${sourceName}`;
+          exportedLinks.push({
+            line_index_1: link.line_index_1,
+            line_index_2: link.secondary_line_index,
+            heRef_2: link.secondaryRef || secondaryTitle,
+            path_2: `${secondaryTitle}.txt`,
+            connection_type: link.connection_type
+          });
+        }
+      });
+
+      const linksJsonContent = JSON.stringify(exportedLinks, null, 2);
       const cleanFileName = session.commentaryTitle.replace(/[/\\?%*:|"<>]/g, '_');
       zip.file(`${cleanFileName}_links.json`, linksJsonContent);
 
