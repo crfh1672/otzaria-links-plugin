@@ -359,30 +359,40 @@ export function runLinkingParser(
  * Formats commentary line text with <b>...</b> applied based on DHHighlight configuration
  */
 export function formatLineWithDH(line: string, highlight?: DHHighlight): string {
-  if (!line || !line.trim()) return line;
+  if (!line || !line.trim()) return line || '';
   if (!highlight || highlight.wordCount <= 0) return line;
 
-  const words = line.split(/(\s+)/); // Keep spaces preserved
-  const actualWords: { text: string; wordIndex: number; arrayIndex: number }[] = [];
-  
-  let currentWordIdx = 0;
-  for (let i = 0; i < words.length; i++) {
-    if (words[i].trim().length > 0) {
-      actualWords.push({ text: words[i], wordIndex: currentWordIdx, arrayIndex: i });
-      currentWordIdx++;
+  try {
+    const words = line.split(/(\s+)/); // Keep spaces preserved
+    const actualWords: { text: string; wordIndex: number; arrayIndex: number }[] = [];
+    
+    let currentWordIdx = 0;
+    for (let i = 0; i < words.length; i++) {
+      if (words[i].trim().length > 0) {
+        actualWords.push({ text: words[i], wordIndex: currentWordIdx, arrayIndex: i });
+        currentWordIdx++;
+      }
     }
+
+    if (actualWords.length === 0) return line;
+
+    const startWord = Math.max(0, Math.min(highlight.wordStart, actualWords.length - 1));
+    const count = Math.max(1, highlight.wordCount);
+    const endWord = Math.min(actualWords.length, startWord + count);
+
+    if (startWord >= actualWords.length || endWord <= 0) return line;
+
+    const startArrIdx = actualWords[startWord]?.arrayIndex;
+    const endArrIdx = actualWords[Math.max(0, Math.min(actualWords.length - 1, endWord - 1))]?.arrayIndex;
+
+    if (startArrIdx === undefined || endArrIdx === undefined) return line;
+
+    words[startArrIdx] = '<b>' + words[startArrIdx];
+    words[endArrIdx] = words[endArrIdx] + '</b>';
+
+    return words.join('');
+  } catch (e) {
+    console.error('Error in formatLineWithDH:', e);
+    return line;
   }
-
-  if (actualWords.length === 0) return line;
-
-  const startWord = Math.max(0, Math.min(highlight.wordStart, actualWords.length - 1));
-  const endWord = Math.min(actualWords.length, startWord + highlight.wordCount);
-
-  const startArrIdx = actualWords[startWord].arrayIndex;
-  const endArrIdx = actualWords[endWord - 1].arrayIndex;
-
-  words[startArrIdx] = '<b>' + words[startArrIdx];
-  words[endArrIdx] = words[endArrIdx] + '</b>';
-
-  return words.join('');
 }
