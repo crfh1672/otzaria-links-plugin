@@ -41,14 +41,42 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
     config
   } = session;
 
-  // Group commentary lines by target source line index (line_index_2)
-  const linksBySourceLine = React.useMemo(() => {
+  // Group commentary lines by target source line index (line_index_2) for primary source display only
+  const primaryLinksBySourceLine = React.useMemo(() => {
     const map: Record<number, OtzariaLink[]> = {};
     links.forEach(link => {
-      if (!map[link.line_index_2]) {
-        map[link.line_index_2] = [];
+      if (!link.secondaryTarget) {
+        if (!map[link.line_index_2]) {
+          map[link.line_index_2] = [];
+        }
+        map[link.line_index_2].push(link);
       }
-      map[link.line_index_2].push(link);
+    });
+    return map;
+  }, [links]);
+
+  const rashiLinksBySecondaryLine = React.useMemo(() => {
+    const map: Record<number, OtzariaLink[]> = {};
+    links.forEach(link => {
+      if (link.secondaryTarget === 'rashi' && link.secondary_line_index) {
+        if (!map[link.secondary_line_index]) {
+          map[link.secondary_line_index] = [];
+        }
+        map[link.secondary_line_index].push(link);
+      }
+    });
+    return map;
+  }, [links]);
+
+  const tosafotLinksBySecondaryLine = React.useMemo(() => {
+    const map: Record<number, OtzariaLink[]> = {};
+    links.forEach(link => {
+      if (link.secondaryTarget === 'tosafot' && link.secondary_line_index) {
+        if (!map[link.secondary_line_index]) {
+          map[link.secondary_line_index] = [];
+        }
+        map[link.secondary_line_index].push(link);
+      }
     });
     return map;
   }, [links]);
@@ -65,13 +93,13 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
 
     sourceLines.forEach((line, idx) => {
       const srcLineIdx1 = idx + 1;
-      const linkedCount = (linksBySourceLine[srcLineIdx1] || []).length;
+      const linkedCount = (primaryLinksBySourceLine[srcLineIdx1] || []).length;
 
       if (filterLinkedOnly && linkedCount === 0) return;
 
       if (q) {
         const lineMatches = line.toLowerCase().includes(q) || srcLineIdx1.toString() === q;
-        const commMatches = (linksBySourceLine[srcLineIdx1] || []).some(l => {
+        const commMatches = (primaryLinksBySourceLine[srcLineIdx1] || []).some(l => {
           const commText = commentaryLines[l.line_index_1 - 1] || '';
           return commText.toLowerCase().includes(q);
         });
@@ -308,15 +336,10 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
                 {linkObj.secondaryRef}
               </div>
             )}
-            {linkObj.secondary_line_index ? (
-              <p className="text-[var(--color-on-surface)] font-serif leading-tight mt-0.5">
-                {linkObj.secondaryTarget === 'rashi' && rashiLines ? rashiLines[linkObj.secondary_line_index - 1] : ''}
-                {linkObj.secondaryTarget === 'tosafot' && tosafotLines ? tosafotLines[linkObj.secondary_line_index - 1] : ''}
-              </p>
-            ) : (
-              <p className="text-[var(--color-on-surface)] font-serif leading-tight mt-0.5 italic">
-                אין טקסט מקור משני זמין להצגה עבור קישור זה.
-              </p>
+            {linkObj.secondary_line_index && (
+              <div className="text-[10px] text-[var(--color-on-surface-variant)]">
+                שורה משנית: {linkObj.secondary_line_index}
+              </div>
             )}
           </div>
         )}
@@ -425,7 +448,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
               const srcLine = sourceLines[idx];
               const srcLineIdx1 = idx + 1; // 1-based index
               const isHeader = /<h[1-6][^>]*>.*<\/h[1-6]>/i.test(srcLine) || /^#{1,6}\s+/.test(srcLine);
-              const linkedCommLinks = linksBySourceLine[srcLineIdx1] || [];
+              const linkedCommLinks = primaryLinksBySourceLine[srcLineIdx1] || [];
               const isDragOver = dragOverSourceIdx === srcLineIdx1;
 
               if (isHeader) {
@@ -485,6 +508,62 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
                 </div>
               );
             })
+          )}
+
+          {/* Secondary Sources Section */}
+          {(config.sourceCategory === 'shas' && ((rashiLines && Object.keys(rashiLinksBySecondaryLine).length > 0) || (tosafotLines && Object.keys(tosafotLinksBySecondaryLine).length > 0))) && (
+            <div className="space-y-4 pt-6">
+              <div className="text-sm font-bold text-[var(--color-on-surface)]">מקורות משניים</div>
+              {['rashi', 'tosafot'].map(target => {
+                const targetName = target === 'rashi' ? 'רש"י' : 'תוספות';
+                const lines = target === 'rashi' ? rashiLines : tosafotLines;
+                const linksByLine = target === 'rashi' ? rashiLinksBySecondaryLine : tosafotLinksBySecondaryLine;
+                const lineIndices = Object.keys(linksByLine).map(key => Number(key)).sort((a, b) => a - b);
+
+                if (!lines || lineIndices.length === 0) return null;
+
+                return (
+                  <div key={target} className="space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-[var(--color-primary)]">
+                      <span className="w-2 h-2 rounded-full bg-[var(--color-primary)]" />
+                      <span>מקור משני: {targetName}</span>
+                    </div>
+                    {lineIndices.map(lineIdx => {
+                      const secLine = lines[lineIdx - 1] || '';
+                      const linkedCommLinks = linksByLine[lineIdx] || [];
+
+                      return (
+                        <div key={`${target}-line-${lineIdx}`} className="grid grid-cols-1 md:grid-cols-12 gap-3 p-4 rounded-2xl border bg-[var(--color-surface)] border-[var(--color-outline-variant)] shadow-2xs">
+                          <div className="md:col-span-5 border-l-0 md:border-l border-[var(--color-outline)] pl-0 md:pl-3 space-y-1.5">
+                            <div className="flex items-center justify-between text-[11px] font-bold text-amber-800 dark:text-amber-300">
+                              <span>{targetName} - שורה {lineIdx}</span>
+                              <span className="text-[10px] bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded-md text-amber-800 dark:text-amber-300">
+                                מקור משני
+                              </span>
+                            </div>
+                            <p className="text-xs font-serif leading-relaxed text-[var(--color-on-surface)]">
+                              {secLine}
+                            </p>
+                          </div>
+                          <div className="md:col-span-7 space-y-2">
+                            <div className="text-[11px] font-bold text-[var(--color-secondary)] mb-1">
+                              פירושים מקושרים ({linkedCommLinks.length})
+                            </div>
+                            {linkedCommLinks.length === 0 ? (
+                              <div className="p-4 rounded-xl border border-dashed border-[var(--color-outline)] text-center text-[11px] text-[var(--color-on-surface-variant)]">
+                                אין פירוש מקושר לשורה זו.
+                              </div>
+                            ) : (
+                              linkedCommLinks.map(l => renderCommentaryBox(l))
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           )}
 
           {/* Bottom Pagination Bar */}
