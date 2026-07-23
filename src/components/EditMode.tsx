@@ -303,10 +303,19 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
                 {linkObj.secondary_line_index ? ` (שורה ${linkObj.secondary_line_index})` : ''}
               </span>
             </div>
-            {linkObj.secondary_line_index && (
+            {linkObj.secondaryRef && (
+              <div className="text-[10px] text-[var(--color-on-surface-variant)]">
+                {linkObj.secondaryRef}
+              </div>
+            )}
+            {linkObj.secondary_line_index ? (
               <p className="text-[var(--color-on-surface)] font-serif leading-tight mt-0.5">
                 {linkObj.secondaryTarget === 'rashi' && rashiLines ? rashiLines[linkObj.secondary_line_index - 1] : ''}
                 {linkObj.secondaryTarget === 'tosafot' && tosafotLines ? tosafotLines[linkObj.secondary_line_index - 1] : ''}
+              </p>
+            ) : (
+              <p className="text-[var(--color-on-surface)] font-serif leading-tight mt-0.5 italic">
+                אין טקסט מקור משני זמין להצגה עבור קישור זה.
               </p>
             )}
           </div>
