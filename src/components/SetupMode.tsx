@@ -203,9 +203,9 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
               <ChevronRight className="w-4 h-4 text-[var(--color-on-surface-variant)] shrink-0" />
             )}
             {isExpanded ? (
-              <FolderOpen className="w-4.5 h-4.5 text-[#D99B56] shrink-0" />
+              <FolderOpen className="w-4.5 h-4.5 text-current shrink-0" />
             ) : (
-              <Folder className="w-4.5 h-4.5 text-[#D99B56] shrink-0" />
+              <Folder className="w-4.5 h-4.5 text-current shrink-0" />
             )}
             <span className="truncate">{node.title}</span>
           </button>
@@ -258,7 +258,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
 
             <div className="flex items-center gap-2">
               <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-secondary-subtle)] hover:bg-[var(--color-outline-variant)] text-[var(--color-on-surface)] rounded-lg transition-colors border border-[var(--color-outline)]">
-                <Upload className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                <Upload className="w-3.5 h-3.5 text-current" />
                 <span>ייבוא TXT חיצוני</span>
                 <input
                   type="file"
@@ -290,7 +290,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
               <div className="space-y-3">
                 <div className="flex items-center justify-between bg-[var(--color-primary-subtle)] p-3 rounded-xl border border-[var(--color-outline)]">
                   <div className="flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-[var(--color-primary)]" />
+                    <FileText className="w-5 h-5 text-[var(--color-on-surface)]" />
                     <div>
                       <h4 className="text-sm font-bold text-[var(--color-on-surface)]">
                         {selectedBookTitle}
@@ -300,7 +300,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
                       </p>
                     </div>
                   </div>
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  <CheckCircle2 className="w-5 h-5 text-[var(--color-on-surface)]" />
                 </div>
 
                 <div className="bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-outline)] text-xs font-serif leading-relaxed text-[var(--color-on-surface)] max-h-[460px] overflow-y-auto whitespace-pre-wrap">
@@ -331,7 +331,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
         {/* Left Pane: Configuration & Settings (5 Cols) */}
         <div className="lg:col-span-5 bg-[var(--color-surface)] text-[var(--color-on-surface)] rounded-2xl shadow-xs border border-[var(--color-outline-variant)] flex flex-col h-[620px] overflow-hidden">
           <div className="p-3.5 bg-[var(--color-surface-container-high)] border-b border-[var(--color-outline)] flex items-center gap-2">
-            <Settings2 className="w-4 h-4 text-[var(--color-primary)]" />
+            <Settings2 className="w-4 h-4 text-[var(--color-on-surface)]" />
             <h3 className="text-sm font-bold text-[var(--color-on-surface)]">
               אפיון והגדרות מיפוי
             </h3>
@@ -462,7 +462,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
                 <span>מעבד מיפוי...</span>
               ) : (
                 <>
-                  <Play className="w-4 h-4 fill-current" />
+                  <Play className="w-4 h-4 text-current" />
                   <span>הפעל אלגוריתם מיפוי</span>
                 </>
               )}

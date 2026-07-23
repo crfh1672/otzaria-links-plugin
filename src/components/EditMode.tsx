@@ -321,7 +321,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
       <div className="bg-[var(--color-surface)] text-[var(--color-on-surface)] p-4 rounded-2xl shadow-2xs border border-[var(--color-outline-variant)] flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
           <h2 className="text-sm font-bold text-[var(--color-on-surface)] flex items-center gap-2">
-            <Link2 className="w-4 h-4 text-[var(--color-primary)]" />
+            <Link2 className="w-4 h-4 text-current" />
             <span>סביבת עריכה אינטראקטיבית - כרטיסיות מקושרות</span>
           </h2>
           <p className="text-xs text-[var(--color-on-surface-variant)]">
@@ -517,7 +517,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
           >
             <div className="flex items-center justify-between border-b border-[var(--color-outline)] pb-2">
               <h3 className="text-xs font-bold text-[var(--color-on-surface)] flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 text-rose-500" />
+                <AlertTriangle className="w-4 h-4 text-current" />
                 <span>פירושים ללא מקור מקושר ({unlinkedCommLines.length})</span>
               </h3>
             </div>

@@ -103,7 +103,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           <span className="text-xs font-bold text-[var(--color-primary)] max-w-[180px] truncate" title={commentaryName}>
             {commentaryName}
           </span>
-          <ArrowLeftRight className="w-3.5 h-3.5 text-[var(--color-on-surface-variant)] shrink-0 mx-1" />
+          <ArrowLeftRight className="w-3.5 h-3.5 text-current shrink-0 mx-1" />
           <span className="text-xs font-bold text-[var(--color-on-surface)] max-w-[180px] truncate" title={sourceName}>
             {sourceName}
           </span>
@@ -142,7 +142,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] rounded-lg transition-colors border border-[var(--color-outline)]"
             title="פתח פרויקט שמור מהמטמון"
           >
-            <FolderOpen className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+            <FolderOpen className="w-3.5 h-3.5 text-current" />
             <span>פתיחה</span>
           </button>
 
@@ -161,7 +161,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-secondary-subtle)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] rounded-lg transition-colors border border-[var(--color-outline)]"
             title="קימפול ל-HTML בודד והורדת התוסף לגיטהאב"
           >
-            <Code className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+            <Code className="w-3.5 h-3.5 text-current" />
             <span>קימפול HTML בודד</span>
           </button>
         </div>
