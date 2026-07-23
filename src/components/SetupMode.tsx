@@ -164,17 +164,16 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
   const renderTreeNode = (node: BookNode) => {
     const isExpanded = expandedPaths[node.path];
     const hasCategories = node.categories && node.categories.length > 0;
-    const hasBooks = node.books && node.books.length > 0;
 
-    // Filter books based on search query
-    const filteredBooks = useMemo(() => {
-      if (!node.books) return [];
-      if (!searchQuery.trim()) return node.books;
-      const q = searchQuery.toLowerCase();
-      return node.books.filter(b => b.title.toLowerCase().includes(q) || b.bookId.toLowerCase().includes(q));
-    }, [node.books, searchQuery]);
+    // Filter books based on search query without hooks inside recursive calls
+    const q = searchQuery.toLowerCase().trim();
+    const filteredBooks = (!node.books)
+      ? []
+      : (!q)
+      ? node.books
+      : node.books.filter(b => b.title.toLowerCase().includes(q) || b.bookId.toLowerCase().includes(q));
 
-    if (!hasCategories && filteredBooks.length === 0 && searchQuery.trim()) {
+    if (!hasCategories && filteredBooks.length === 0 && q) {
       return null;
     }
 
