@@ -25,6 +25,12 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
   const [draggedCommLineIdx, setDraggedCommLineIdx] = useState<number | null>(null);
   const [dragOverSourceIdx, setDragOverSourceIdx] = useState<number | null>(null);
 
+  // Pagination & Filtering state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(40);
+  const [sourceSearchQuery, setSourceSearchQuery] = useState('');
+  const [filterLinkedOnly, setFilterLinkedOnly] = useState(false);
+
   const {
     commentaryLines,
     sourceLines,
@@ -51,6 +57,46 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
   const linkedCommLineIndices = React.useMemo(() => {
     return new Set(links.map(l => l.line_index_1));
   }, [links]);
+
+  // Filtered source line array indices
+  const filteredSourceIndices = React.useMemo(() => {
+    const indices: number[] = [];
+    const q = sourceSearchQuery.toLowerCase().trim();
+
+    sourceLines.forEach((line, idx) => {
+      const srcLineIdx1 = idx + 1;
+      const linkedCount = (linksBySourceLine[srcLineIdx1] || []).length;
+
+      if (filterLinkedOnly && linkedCount === 0) return;
+
+      if (q) {
+        const lineMatches = line.toLowerCase().includes(q) || srcLineIdx1.toString() === q;
+        const commMatches = (linksBySourceLine[srcLineIdx1] || []).some(l => {
+          const commText = commentaryLines[l.line_index_1 - 1] || '';
+          return commText.toLowerCase().includes(q);
+        });
+        if (!lineMatches && !commMatches) return;
+      }
+
+      indices.push(idx);
+    });
+
+    return indices;
+  }, [sourceLines, linksBySourceLine, filterLinkedOnly, sourceSearchQuery, commentaryLines]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredSourceIndices.length / pageSize));
+  
+  // Reset page if filtered results contract
+  React.useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [filteredSourceIndices.length, totalPages, currentPage]);
+
+  const currentPageIndices = React.useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredSourceIndices.slice(start, start + pageSize);
+  }, [filteredSourceIndices, currentPage, pageSize]);
 
   // Unlinked commentary lines
   const unlinkedCommLines = React.useMemo(() => {
@@ -293,85 +339,177 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
         
         {/* Linked Source & Commentary Unified Cards Column (8 cols) */}
         <div className="lg:col-span-8 space-y-4">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
-            שורות המקור והפירושים המקושרים ({sourceLines.length} שורות מקור)
-          </h3>
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+            {/* Search filter */}
+            <div className="relative flex-1 min-w-[200px]">
+              <input
+                type="text"
+                value={sourceSearchQuery}
+                onChange={e => {
+                  setSourceSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                placeholder="סינון/חיפוש בשורות מקור או פירוש..."
+                className="w-full pl-3 pr-8 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
 
-          {sourceLines.map((srcLine, idx) => {
-            const srcLineIdx1 = idx + 1; // 1-based index
-            const isHeader = /<h[1-6][^>]*>.*<\/h[1-6]>/i.test(srcLine) || /^#{1,6}\s+/.test(srcLine);
-            const linkedCommLinks = linksBySourceLine[srcLineIdx1] || [];
-            const isDragOver = dragOverSourceIdx === srcLineIdx1;
+            {/* Filter toggle */}
+            <button
+              onClick={() => {
+                setFilterLinkedOnly(!filterLinkedOnly);
+                setCurrentPage(1);
+              }}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors border ${
+                filterLinkedOnly
+                  ? 'bg-indigo-600 text-white border-indigo-500'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              {filterLinkedOnly ? 'מציג מקושרים בלבד' : 'הצג הכל'}
+            </button>
 
-            if (isHeader) {
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                <button
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 disabled:opacity-40 rounded border border-slate-300 dark:border-slate-700"
+                >
+                  הקודם
+                </button>
+                <span>
+                  עמוד {currentPage} מתוך {totalPages}
+                </span>
+                <button
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 disabled:opacity-40 rounded border border-slate-300 dark:border-slate-700"
+                >
+                  הבא
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1">
+            <span>
+              מציג {currentPageIndices.length} שורות מקור (סה"כ {filteredSourceIndices.length})
+            </span>
+          </div>
+
+          {currentPageIndices.length === 0 ? (
+            <div className="p-8 text-center text-xs text-slate-400 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-800">
+              לא נמצאו שורות מקור המתאימות לסינון
+            </div>
+          ) : (
+            currentPageIndices.map(idx => {
+              const srcLine = sourceLines[idx];
+              const srcLineIdx1 = idx + 1; // 1-based index
+              const isHeader = /<h[1-6][^>]*>.*<\/h[1-6]>/i.test(srcLine) || /^#{1,6}\s+/.test(srcLine);
+              const linkedCommLinks = linksBySourceLine[srcLineIdx1] || [];
+              const isDragOver = dragOverSourceIdx === srcLineIdx1;
+
+              if (isHeader) {
+                return (
+                  <div
+                    key={`src-hdr-${srcLineIdx1}`}
+                    className="my-4 p-3 bg-indigo-900 text-white rounded-lg shadow-sm border border-indigo-800 font-bold text-sm"
+                    dangerouslySetInnerHTML={{ __html: srcLine }}
+                  />
+                );
+              }
+
               return (
                 <div
-                  key={`src-hdr-${srcLineIdx1}`}
-                  className="my-4 p-3 bg-indigo-900 text-white rounded-lg shadow-sm border border-indigo-800 font-bold text-sm"
-                  dangerouslySetInnerHTML={{ __html: srcLine }}
-                />
-              );
-            }
-
-            return (
-              <div
-                key={`src-card-${srcLineIdx1}`}
-                onDragOver={e => handleDragOver(e, srcLineIdx1)}
-                onDrop={() => handleDropOnSourceCard(srcLineIdx1)}
-                className={`grid grid-cols-1 md:grid-cols-12 gap-3 p-4 rounded-xl border transition-all ${
-                  isDragOver
-                    ? 'border-2 border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 ring-2 ring-indigo-400/30'
-                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xs'
-                }`}
-              >
-                {/* Left Side: Target Source Line (5 Cols) */}
-                <div className="md:col-span-5 border-l-0 md:border-l border-slate-200 dark:border-slate-800 pl-0 md:pl-3 space-y-1.5">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
-                    <span>{config.targetBookName} - שורה {srcLineIdx1}</span>
-                    <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded text-emerald-800 dark:text-emerald-300">
-                      מקור
-                    </span>
-                  </div>
-
-                  <p className="text-xs font-serif leading-relaxed text-slate-800 dark:text-slate-200">
-                    {srcLine}
-                  </p>
-
-                  {/* If secondary source line content exists for this header */}
-                  {rashiLines && rashiLines[srcLineIdx1 - 1] && (
-                    <div className="mt-2 p-2 bg-amber-50/60 dark:bg-amber-950/20 rounded border border-amber-200/60 dark:border-amber-900/40 text-[11px]">
-                      <span className="font-bold text-amber-800 dark:text-amber-300 block mb-0.5">
-                        מקור משני (רש"י):
+                  key={`src-card-${srcLineIdx1}`}
+                  onDragOver={e => handleDragOver(e, srcLineIdx1)}
+                  onDrop={() => handleDropOnSourceCard(srcLineIdx1)}
+                  className={`grid grid-cols-1 md:grid-cols-12 gap-3 p-4 rounded-xl border transition-all ${
+                    isDragOver
+                      ? 'border-2 border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 ring-2 ring-indigo-400/30'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xs'
+                  }`}
+                >
+                  {/* Left Side: Target Source Line (5 Cols) */}
+                  <div className="md:col-span-5 border-l-0 md:border-l border-slate-200 dark:border-slate-800 pl-0 md:pl-3 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                      <span>{config.targetBookName} - שורה {srcLineIdx1}</span>
+                      <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded text-emerald-800 dark:text-emerald-300">
+                        מקור
                       </span>
-                      <p className="text-slate-700 dark:text-slate-300 font-serif leading-tight">
-                        {rashiLines[srcLineIdx1 - 1]}
-                      </p>
                     </div>
-                  )}
-                </div>
 
-                {/* Right Side: Linked Commentary Lines Stacked (7 Cols) */}
-                <div className="md:col-span-7 space-y-2">
-                  <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 mb-1 flex items-center justify-between">
-                    <span>פירושים מקושרים ({linkedCommLinks.length})</span>
-                    {isDragOver && (
-                      <span className="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded shadow-xs">
-                        השלך כאן כדי לקשר
-                      </span>
+                    <p className="text-xs font-serif leading-relaxed text-slate-800 dark:text-slate-200">
+                      {srcLine}
+                    </p>
+
+                    {/* If secondary source line content exists for this header */}
+                    {rashiLines && rashiLines[srcLineIdx1 - 1] && (
+                      <div className="mt-2 p-2 bg-amber-50/60 dark:bg-amber-950/20 rounded border border-amber-200/60 dark:border-amber-900/40 text-[11px]">
+                        <span className="font-bold text-amber-800 dark:text-amber-300 block mb-0.5">
+                          מקור משני (רש"י):
+                        </span>
+                        <p className="text-slate-700 dark:text-slate-300 font-serif leading-tight">
+                          {rashiLines[srcLineIdx1 - 1]}
+                        </p>
+                      </div>
                     )}
                   </div>
 
-                  {linkedCommLinks.length === 0 ? (
-                    <div className="p-4 rounded-lg border border-dashed border-slate-300 dark:border-slate-800 text-center text-[11px] text-slate-400">
-                      אין פירוש מקושר לשורה זו. גרור פירוש לכאן.
+                  {/* Right Side: Linked Commentary Lines Stacked (7 Cols) */}
+                  <div className="md:col-span-7 space-y-2">
+                    <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 mb-1 flex items-center justify-between">
+                      <span>פירושים מקושרים ({linkedCommLinks.length})</span>
+                      {isDragOver && (
+                        <span className="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded shadow-xs">
+                          השלך כאן כדי לקשר
+                        </span>
+                      )}
                     </div>
-                  ) : (
-                    linkedCommLinks.map(l => renderCommentaryBox(l))
-                  )}
+
+                    {linkedCommLinks.length === 0 ? (
+                      <div className="p-4 rounded-lg border border-dashed border-slate-300 dark:border-slate-800 text-center text-[11px] text-slate-400">
+                        אין פירוש מקושר לשורה זו. גרור פירוש לכאן.
+                      </div>
+                    ) : (
+                      linkedCommLinks.map(l => renderCommentaryBox(l))
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
+
+          {/* Bottom Pagination Bar */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-3 pt-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
+              <button
+                disabled={currentPage <= 1}
+                onClick={() => {
+                  setCurrentPage(p => Math.max(1, p - 1));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="px-4 py-2 bg-white dark:bg-slate-900 hover:bg-slate-100 disabled:opacity-40 rounded-lg border border-slate-300 dark:border-slate-800 shadow-xs"
+              >
+                ← עמוד קודם
+              </button>
+              <span>
+                עמוד {currentPage} מתוך {totalPages}
+              </span>
+              <button
+                disabled={currentPage >= totalPages}
+                onClick={() => {
+                  setCurrentPage(p => Math.min(totalPages, p + 1));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="px-4 py-2 bg-white dark:bg-slate-900 hover:bg-slate-100 disabled:opacity-40 rounded-lg border border-slate-300 dark:border-slate-800 shadow-xs"
+              >
+                עמוד הבא →
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Unlinked Commentary Standalone Pane Column (4 cols) */}
