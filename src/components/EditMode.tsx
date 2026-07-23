@@ -42,7 +42,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
   } = session;
 
   // Group commentary lines by target source line index (line_index_2) for primary source display only
-  const primaryLinksBySourceLine = React.useMemo(() => {
+  const linksBySourceLine = React.useMemo(() => {
     const map: Record<number, OtzariaLink[]> = {};
     links.forEach(link => {
       if (!link.secondaryTarget) {
@@ -55,9 +55,6 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
     return map;
   }, [links]);
 
-  // Alias kept for compatibility with existing references and older code paths.
-  const linksBySourceLine = primaryLinksBySourceLine;
-
   const rashiLinksBySecondaryLine = React.useMemo(() => {
     const map: Record<number, OtzariaLink[]> = {};
     links.forEach(link => {
@@ -69,6 +66,10 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
       }
     });
     return map;
+  }, [links]);
+
+  const rashiLinksWithoutLine = React.useMemo(() => {
+    return links.filter(link => link.secondaryTarget === 'rashi' && !link.secondary_line_index);
   }, [links]);
 
   const tosafotLinksBySecondaryLine = React.useMemo(() => {
@@ -84,6 +85,10 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
     return map;
   }, [links]);
 
+  const tosafotLinksWithoutLine = React.useMemo(() => {
+    return links.filter(link => link.secondaryTarget === 'tosafot' && !link.secondary_line_index);
+  }, [links]);
+
   // Set of linked commentary line indices (1-based)
   const linkedCommLineIndices = React.useMemo(() => {
     return new Set(links.map(l => l.line_index_1));
@@ -96,13 +101,13 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
 
     sourceLines.forEach((line, idx) => {
       const srcLineIdx1 = idx + 1;
-      const linkedCount = (primaryLinksBySourceLine[srcLineIdx1] || []).length;
+      const linkedCount = (linksBySourceLine[srcLineIdx1] || []).length;
 
       if (filterLinkedOnly && linkedCount === 0) return;
 
       if (q) {
         const lineMatches = line.toLowerCase().includes(q) || srcLineIdx1.toString() === q;
-        const commMatches = (primaryLinksBySourceLine[srcLineIdx1] || []).some(l => {
+        const commMatches = (linksBySourceLine[srcLineIdx1] || []).some(l => {
           const commText = commentaryLines[l.line_index_1 - 1] || '';
           return commText.toLowerCase().includes(q);
         });
@@ -113,7 +118,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
     });
 
     return indices;
-  }, [sourceLines, primaryLinksBySourceLine, filterLinkedOnly, sourceSearchQuery, commentaryLines]);
+  }, [sourceLines, linksBySourceLine, filterLinkedOnly, sourceSearchQuery, commentaryLines]);
 
   const totalPages = Math.max(1, Math.ceil(filteredSourceIndices.length / pageSize));
   
@@ -451,7 +456,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
               const srcLine = sourceLines[idx];
               const srcLineIdx1 = idx + 1; // 1-based index
               const isHeader = /<h[1-6][^>]*>.*<\/h[1-6]>/i.test(srcLine) || /^#{1,6}\s+/.test(srcLine);
-              const linkedCommLinks = primaryLinksBySourceLine[srcLineIdx1] || [];
+              const linkedCommLinks = linksBySourceLine[srcLineIdx1] || [];
               const isDragOver = dragOverSourceIdx === srcLineIdx1;
 
               if (isHeader) {
@@ -514,16 +519,17 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
           )}
 
           {/* Secondary Sources Section */}
-          {(config.sourceCategory === 'shas' && ((rashiLines && Object.keys(rashiLinksBySecondaryLine).length > 0) || (tosafotLines && Object.keys(tosafotLinksBySecondaryLine).length > 0))) && (
+          {(((rashiLines && (Object.keys(rashiLinksBySecondaryLine).length > 0 || rashiLinksWithoutLine.length > 0)) || (tosafotLines && (Object.keys(tosafotLinksBySecondaryLine).length > 0 || tosafotLinksWithoutLine.length > 0)))) && (
             <div className="space-y-4 pt-6">
               <div className="text-sm font-bold text-[var(--color-on-surface)]">מקורות משניים</div>
               {['rashi', 'tosafot'].map(target => {
                 const targetName = target === 'rashi' ? 'רש"י' : 'תוספות';
                 const lines = target === 'rashi' ? rashiLines : tosafotLines;
                 const linksByLine = target === 'rashi' ? rashiLinksBySecondaryLine : tosafotLinksBySecondaryLine;
+                const linksWithoutLine = target === 'rashi' ? rashiLinksWithoutLine : tosafotLinksWithoutLine;
                 const lineIndices = Object.keys(linksByLine).map(key => Number(key)).sort((a, b) => a - b);
 
-                if (!lines || lineIndices.length === 0) return null;
+                if (!lines && linksWithoutLine.length === 0) return null;
 
                 return (
                   <div key={target} className="space-y-3">
@@ -532,7 +538,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
                       <span>מקור משני: {targetName}</span>
                     </div>
                     {lineIndices.map(lineIdx => {
-                      const secLine = lines[lineIdx - 1] || '';
+                      const secLine = lines?.[lineIdx - 1] || '';
                       const linkedCommLinks = linksByLine[lineIdx] || [];
 
                       return (
@@ -563,6 +569,14 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
                         </div>
                       );
                     })}
+                    {linksWithoutLine.length > 0 && (
+                      <div className="grid grid-cols-1 gap-3 p-4 rounded-2xl border bg-[var(--color-surface)] border-[var(--color-outline-variant)] shadow-2xs">
+                        <div className="text-[11px] font-bold text-[var(--color-secondary)] mb-2">
+                          קישורים משניים ללא שורה משויכת ב-{targetName}
+                        </div>
+                        {linksWithoutLine.map(link => renderCommentaryBox(link))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
