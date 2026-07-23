@@ -55,6 +55,9 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
     return map;
   }, [links]);
 
+  // Alias kept for compatibility with existing references and older code paths.
+  const linksBySourceLine = primaryLinksBySourceLine;
+
   const rashiLinksBySecondaryLine = React.useMemo(() => {
     const map: Record<number, OtzariaLink[]> = {};
     links.forEach(link => {
@@ -110,7 +113,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
     });
 
     return indices;
-  }, [sourceLines, linksBySourceLine, filterLinkedOnly, sourceSearchQuery, commentaryLines]);
+  }, [sourceLines, primaryLinksBySourceLine, filterLinkedOnly, sourceSearchQuery, commentaryLines]);
 
   const totalPages = Math.max(1, Math.ceil(filteredSourceIndices.length / pageSize));
   
