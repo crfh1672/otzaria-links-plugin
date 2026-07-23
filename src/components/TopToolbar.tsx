@@ -72,19 +72,19 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-slate-900 text-white shadow-md border-b border-slate-800">
+    <header className="sticky top-0 z-40 w-full bg-[var(--color-surface-container-high)] text-[var(--color-on-surface)] shadow-xs border-b border-[var(--color-outline)]">
       <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
         {/* Right side: Commentary and Source Active Book Titles */}
-        <div className="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/60">
-          <span className="text-sm font-semibold text-amber-300 max-w-[200px] truncate" title={commentaryName}>
+        <div className="flex items-center gap-2 bg-[var(--color-surface)] px-3 py-1.5 rounded-xl border border-[var(--color-outline)] shadow-2xs">
+          <span className="text-xs font-bold text-[var(--color-primary)] max-w-[180px] truncate" title={commentaryName}>
             {commentaryName}
           </span>
-          <ArrowLeftRight className="w-4 h-4 text-slate-400 shrink-0 mx-1" />
-          <span className="text-sm font-semibold text-emerald-300 max-w-[200px] truncate" title={sourceName}>
+          <ArrowLeftRight className="w-3.5 h-3.5 text-[var(--color-on-surface-variant)] shrink-0 mx-1" />
+          <span className="text-xs font-bold text-[var(--color-on-surface)] max-w-[180px] truncate" title={sourceName}>
             {sourceName}
           </span>
           {session && (
-            <span className="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-400/30 mr-1">
+            <span className="text-[11px] bg-[var(--color-primary-subtle)] text-[var(--color-primary)] font-bold px-2 py-0.5 rounded-full border border-[var(--color-outline-variant)] mr-1">
               {session.links.length} קישורים
             </span>
           )}
@@ -95,7 +95,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           {mode === 'edit' && (
             <button
               onClick={onReturnToSetup}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white rounded-md transition-colors border border-slate-700"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] rounded-lg transition-colors border border-[var(--color-outline)]"
               title="חזור למסך בחירת ספרים"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -106,7 +106,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           <button
             onClick={onSaveSession}
             disabled={!session}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors shadow-sm"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all shadow-xs"
             title="שמור מצב נוכחי למטמון המקומי"
           >
             <Save className="w-3.5 h-3.5" />
@@ -115,17 +115,17 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
           <button
             onClick={onOpenProjects}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white rounded-md transition-colors border border-slate-700"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] rounded-lg transition-colors border border-[var(--color-outline)]"
             title="פתח פרויקט שמור מהמטמון"
           >
-            <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+            <FolderOpen className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
             <span>פתיחה</span>
           </button>
 
           <button
             onClick={handleExportZip}
             disabled={!session}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors shadow-sm"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-emerald-700 dark:bg-emerald-600 text-white hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all shadow-xs"
             title="ייצא קובץ ZIP עם _links.json וקובץ TXT מעודכן"
           >
             <Download className="w-3.5 h-3.5" />
@@ -134,10 +134,10 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
           <button
             onClick={onOpenHtmlModal}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-amber-600/90 text-amber-50 hover:bg-amber-500 rounded-md transition-colors shadow-sm border border-amber-500/30"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-secondary-subtle)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] rounded-lg transition-colors border border-[var(--color-outline)]"
             title="קימפול ל-HTML בודד והורדת התוסף לגיטהאב"
           >
-            <Code className="w-3.5 h-3.5" />
+            <Code className="w-3.5 h-3.5 text-[var(--color-primary)]" />
             <span>קימפול HTML בודד</span>
           </button>
         </div>

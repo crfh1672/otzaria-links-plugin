@@ -205,11 +205,11 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
     const isUnlinked = !linkObj;
     const isInherited = linkObj?.isInherited;
 
-    let bgStyle = "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800";
+    let bgStyle = "bg-[var(--color-surface-container-low)] text-[var(--color-on-surface)] border-[var(--color-outline)]";
     if (isUnlinked) {
-      bgStyle = "bg-rose-50/60 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/60";
+      bgStyle = "bg-rose-50/80 dark:bg-rose-950/30 text-rose-950 dark:text-rose-100 border-rose-300/80 dark:border-rose-900/60";
     } else if (isInherited) {
-      bgStyle = "bg-purple-50/60 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900/60";
+      bgStyle = "bg-[var(--color-primary-subtle)] text-[var(--color-on-surface)] border-[var(--color-outline)]";
     }
 
     // Format text with HTML <b> tag for DH
@@ -220,21 +220,21 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
         key={`comm-${lineIdx1}`}
         draggable
         onDragStart={() => handleDragStart(lineIdx1)}
-        className={`group relative p-3 rounded-lg border shadow-2xs transition-all ${bgStyle} hover:shadow-md hover:border-indigo-400 dark:hover:border-indigo-600`}
+        className={`group relative p-3 rounded-xl border shadow-2xs transition-all ${bgStyle} hover:shadow-xs hover:border-[var(--color-primary)]`}
       >
         {/* Top Indicators */}
-        <div className="flex items-center justify-between gap-2 mb-1 text-[11px] text-slate-500">
+        <div className="flex items-center justify-between gap-2 mb-1.5 text-[11px] text-[var(--color-on-surface-variant)]">
           <div className="flex items-center gap-1.5 font-mono font-bold">
-            <GripVertical className="w-3.5 h-3.5 text-slate-400 cursor-grab active:cursor-grabbing" />
+            <GripVertical className="w-3.5 h-3.5 text-[var(--color-on-surface-variant)] cursor-grab active:cursor-grabbing opacity-70" />
             <span>שורה {lineIdx1}</span>
             {isInherited && (
-              <span className="bg-purple-200/80 dark:bg-purple-900/60 text-purple-800 dark:text-purple-300 text-[10px] px-1.5 py-0.2 rounded font-semibold flex items-center gap-1">
+              <span className="bg-[var(--color-primary)] text-[var(--color-on-primary)] text-[10px] px-1.5 py-0.2 rounded-md font-semibold flex items-center gap-1">
                 <Info className="w-3 h-3" />
                 <span>ירושת הקשר</span>
               </span>
             )}
             {isUnlinked && (
-              <span className="bg-rose-200/80 dark:bg-rose-900/60 text-rose-800 dark:text-rose-300 text-[10px] px-1.5 py-0.2 rounded font-semibold flex items-center gap-1">
+              <span className="bg-rose-200/90 dark:bg-rose-900/80 text-rose-900 dark:text-rose-100 text-[10px] px-1.5 py-0.2 rounded-md font-semibold flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
                 <span>ללא מקור מקושר</span>
               </span>
@@ -244,14 +244,14 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
           {/* Floating / Hover Actions */}
           <div className="opacity-80 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
             {/* DH Word Highlight Controls */}
-            <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-0.5 rounded border border-slate-200 dark:border-slate-700 ml-1">
-              <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300 px-1">
+            <div className="flex items-center gap-0.5 bg-[var(--color-surface)] p-0.5 rounded-lg border border-[var(--color-outline)] ml-1">
+              <span className="text-[10px] font-medium text-[var(--color-on-surface-variant)] px-1">
                 ד"ה ({highlight.wordCount} מילים)
               </span>
               <button
                 type="button"
                 onClick={() => handleAdjustDH(lineIdx1, 1)}
-                className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-indigo-600 dark:text-indigo-400"
+                className="p-0.5 hover:bg-[var(--color-secondary-subtle)] rounded text-[var(--color-primary)]"
                 title="הוסף מילה להדגשת דיבור המתחיל"
               >
                 <Plus className="w-3 h-3" />
@@ -259,7 +259,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
               <button
                 type="button"
                 onClick={() => handleAdjustDH(lineIdx1, -1)}
-                className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-rose-600 dark:text-rose-400"
+                className="p-0.5 hover:bg-[var(--color-secondary-subtle)] rounded text-rose-600 dark:text-rose-400"
                 title="הסר מילה מהדגשת דיבור המתחיל"
               >
                 <Minus className="w-3 h-3" />
@@ -269,7 +269,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
             {/* Direct Edit Button */}
             <button
               onClick={() => setEditingCommLineIdx(lineIdx1)}
-              className="p-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded transition-colors"
+              className="p-1 hover:bg-[var(--color-primary-subtle)] text-[var(--color-primary)] rounded-lg transition-colors"
               title="ערוך קישור ידנית"
             >
               <Edit3 className="w-3.5 h-3.5" />
@@ -278,7 +278,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
             {!isUnlinked && (
               <button
                 onClick={() => handleSaveLink(lineIdx1, null)}
-                className="p-1 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 rounded transition-colors"
+                className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-lg transition-colors"
                 title="נתק קישור"
               >
                 <Link2Off className="w-3.5 h-3.5" />
@@ -289,7 +289,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
 
         {/* Text with <b> highlighting */}
         <div
-          className="text-xs font-serif leading-relaxed text-slate-900 dark:text-slate-100 [&_b]:font-bold [&_b]:text-indigo-700 dark:[&_b]:text-amber-300 [&_b]:bg-indigo-50 dark:[&_b]:bg-indigo-950/60 [&_b]:px-1 [&_b]:py-0.5 [&_b]:rounded"
+          className="text-xs font-serif leading-relaxed text-[var(--color-on-surface)] [&_b]:font-bold [&_b]:text-[var(--color-primary)] [&_b]:bg-[var(--color-primary-subtle)] [&_b]:px-1 [&_b]:py-0.5 [&_b]:rounded-md"
           dangerouslySetInnerHTML={{ __html: formattedHtml }}
         />
 
@@ -310,13 +310,13 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4">
       {/* Edit Mode Header Info */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-xs border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-[var(--color-surface)] text-[var(--color-on-surface)] p-4 rounded-2xl shadow-2xs border border-[var(--color-outline-variant)] flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
-          <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <Link2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+          <h2 className="text-sm font-bold text-[var(--color-on-surface)] flex items-center gap-2">
+            <Link2 className="w-4 h-4 text-[var(--color-primary)]" />
             <span>סביבת עריכה אינטראקטיבית - כרטיסיות מקושרות</span>
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-[var(--color-on-surface-variant)]">
             ניתן לגרור שורת פירוש ולהשליך לתוך כרטיסיית מקור, להוסיף/להסיר מילים מדיבור המתחיל (ד"ה), או לערוך דיאלוג.
           </p>
         </div>
@@ -324,12 +324,12 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
         {/* Legend */}
         <div className="flex items-center gap-3 text-[11px]">
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-purple-100 border border-purple-300 inline-block" />
-            <span className="text-slate-600 dark:text-slate-300">ירושת הקשר</span>
+            <span className="w-3 h-3 rounded bg-[var(--color-primary-subtle)] border border-[var(--color-outline)] inline-block" />
+            <span className="text-[var(--color-on-surface-variant)]">ירושת הקשר</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-rose-100 border border-rose-300 inline-block" />
-            <span className="text-slate-600 dark:text-slate-300">ללא מקור</span>
+            <span className="w-3 h-3 rounded bg-rose-100 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 inline-block" />
+            <span className="text-[var(--color-on-surface-variant)]">ללא מקור</span>
           </div>
         </div>
       </div>
@@ -339,7 +339,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
         
         {/* Linked Source & Commentary Unified Cards Column (8 cols) */}
         <div className="lg:col-span-8 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-[var(--color-surface)] p-3 rounded-2xl border border-[var(--color-outline-variant)]">
             {/* Search filter */}
             <div className="relative flex-1 min-w-[200px]">
               <input
@@ -350,7 +350,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
                   setCurrentPage(1);
                 }}
                 placeholder="סינון/חיפוש בשורות מקור או פירוש..."
-                className="w-full pl-3 pr-8 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-3 pr-8 py-1.5 text-xs bg-[var(--color-surface-container-low)] border border-[var(--color-outline)] rounded-xl text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
               />
             </div>
 
@@ -360,10 +360,10 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
                 setFilterLinkedOnly(!filterLinkedOnly);
                 setCurrentPage(1);
               }}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors border ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition-colors border ${
                 filterLinkedOnly
-                  ? 'bg-indigo-600 text-white border-indigo-500'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200'
+                  ? 'bg-[var(--color-primary)] text-[var(--color-on-primary)] border-[var(--color-primary)]'
+                  : 'bg-[var(--color-secondary-subtle)] text-[var(--color-on-surface)] border-[var(--color-outline)] hover:bg-[var(--color-outline-variant)]'
               }`}
             >
               {filterLinkedOnly ? 'מציג מקושרים בלבד' : 'הצג הכל'}
@@ -371,11 +371,11 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+              <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-on-surface)]">
                 <button
                   disabled={currentPage <= 1}
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 disabled:opacity-40 rounded border border-slate-300 dark:border-slate-700"
+                  className="px-2.5 py-1 bg-[var(--color-surface-container-low)] hover:bg-[var(--color-outline-variant)] disabled:opacity-40 rounded-lg border border-[var(--color-outline)]"
                 >
                   הקודם
                 </button>
@@ -385,7 +385,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
                 <button
                   disabled={currentPage >= totalPages}
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 disabled:opacity-40 rounded border border-slate-300 dark:border-slate-700"
+                  className="px-2.5 py-1 bg-[var(--color-surface-container-low)] hover:bg-[var(--color-outline-variant)] disabled:opacity-40 rounded-lg border border-[var(--color-outline)]"
                 >
                   הבא
                 </button>
@@ -393,14 +393,14 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
             )}
           </div>
 
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1">
+          <div className="flex items-center justify-between text-xs text-[var(--color-on-surface-variant)] px-1">
             <span>
               מציג {currentPageIndices.length} שורות מקור (סה"כ {filteredSourceIndices.length})
             </span>
           </div>
 
           {currentPageIndices.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-400 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-800">
+            <div className="p-8 text-center text-xs text-[var(--color-on-surface-variant)] bg-[var(--color-surface)] rounded-2xl border border-dashed border-[var(--color-outline)]">
               לא נמצאו שורות מקור המתאימות לסינון
             </div>
           ) : (
@@ -415,7 +415,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
                 return (
                   <div
                     key={`src-hdr-${srcLineIdx1}`}
-                    className="my-4 p-3 bg-indigo-900 text-white rounded-lg shadow-sm border border-indigo-800 font-bold text-sm"
+                    className="my-4 p-3.5 bg-[var(--color-primary)] text-[var(--color-on-primary)] rounded-xl shadow-2xs border border-[var(--color-outline)] font-bold text-sm"
                     dangerouslySetInnerHTML={{ __html: srcLine }}
                   />
                 );
@@ -426,33 +426,44 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
                   key={`src-card-${srcLineIdx1}`}
                   onDragOver={e => handleDragOver(e, srcLineIdx1)}
                   onDrop={() => handleDropOnSourceCard(srcLineIdx1)}
-                  className={`grid grid-cols-1 md:grid-cols-12 gap-3 p-4 rounded-xl border transition-all ${
+                  className={`grid grid-cols-1 md:grid-cols-12 gap-3 p-4 rounded-2xl border transition-all ${
                     isDragOver
-                      ? 'border-2 border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 ring-2 ring-indigo-400/30'
-                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xs'
+                      ? 'border-2 border-[var(--color-primary)] bg-[var(--color-primary-subtle)] ring-2 ring-[var(--color-primary)]/30'
+                      : 'bg-[var(--color-surface)] border-[var(--color-outline-variant)] shadow-2xs'
                   }`}
                 >
                   {/* Left Side: Target Source Line (5 Cols) */}
-                  <div className="md:col-span-5 border-l-0 md:border-l border-slate-200 dark:border-slate-800 pl-0 md:pl-3 space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                  <div className="md:col-span-5 border-l-0 md:border-l border-[var(--color-outline)] pl-0 md:pl-3 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
                       <span>{config.targetBookName} - שורה {srcLineIdx1}</span>
-                      <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded text-emerald-800 dark:text-emerald-300">
+                      <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded-md text-emerald-800 dark:text-emerald-300">
                         מקור
                       </span>
                     </div>
 
-                    <p className="text-xs font-serif leading-relaxed text-slate-800 dark:text-slate-200">
+                    <p className="text-xs font-serif leading-relaxed text-[var(--color-on-surface)]">
                       {srcLine}
                     </p>
 
                     {/* If secondary source line content exists for this header */}
                     {rashiLines && rashiLines[srcLineIdx1 - 1] && (
-                      <div className="mt-2 p-2 bg-amber-50/60 dark:bg-amber-950/20 rounded border border-amber-200/60 dark:border-amber-900/40 text-[11px]">
-                        <span className="font-bold text-amber-800 dark:text-amber-300 block mb-0.5">
+                      <div className="mt-2 p-2 bg-amber-50/80 dark:bg-amber-950/30 rounded-lg border border-amber-200/80 dark:border-amber-900/40 text-[11px]">
+                        <span className="font-bold text-amber-900 dark:text-amber-300 block mb-0.5">
                           מקור משני (רש"י):
                         </span>
-                        <p className="text-slate-700 dark:text-slate-300 font-serif leading-tight">
+                        <p className="text-[var(--color-on-surface)] font-serif leading-tight">
                           {rashiLines[srcLineIdx1 - 1]}
+                        </p>
+                      </div>
+                    )}
+
+                    {tosafotLines && tosafotLines[srcLineIdx1 - 1] && (
+                      <div className="mt-2 p-2 bg-indigo-50/80 dark:bg-indigo-950/30 rounded-lg border border-indigo-200/80 dark:border-indigo-900/40 text-[11px]">
+                        <span className="font-bold text-indigo-900 dark:text-indigo-300 block mb-0.5">
+                          מקור משני (תוספות):
+                        </span>
+                        <p className="text-[var(--color-on-surface)] font-serif leading-tight">
+                          {tosafotLines[srcLineIdx1 - 1]}
                         </p>
                       </div>
                     )}
@@ -460,17 +471,17 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
 
                   {/* Right Side: Linked Commentary Lines Stacked (7 Cols) */}
                   <div className="md:col-span-7 space-y-2">
-                    <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 mb-1 flex items-center justify-between">
+                    <div className="text-[11px] font-bold text-[var(--color-primary)] mb-1 flex items-center justify-between">
                       <span>פירושים מקושרים ({linkedCommLinks.length})</span>
                       {isDragOver && (
-                        <span className="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded shadow-xs">
+                        <span className="text-[10px] bg-[var(--color-primary)] text-[var(--color-on-primary)] px-2 py-0.5 rounded shadow-2xs">
                           השלך כאן כדי לקשר
                         </span>
                       )}
                     </div>
 
                     {linkedCommLinks.length === 0 ? (
-                      <div className="p-4 rounded-lg border border-dashed border-slate-300 dark:border-slate-800 text-center text-[11px] text-slate-400">
+                      <div className="p-4 rounded-xl border border-dashed border-[var(--color-outline)] text-center text-[11px] text-[var(--color-on-surface-variant)]">
                         אין פירוש מקושר לשורה זו. גרור פירוש לכאן.
                       </div>
                     ) : (
@@ -484,14 +495,14 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
 
           {/* Bottom Pagination Bar */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-3 pt-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <div className="flex items-center justify-center gap-3 pt-4 text-xs font-semibold text-[var(--color-on-surface)]">
               <button
                 disabled={currentPage <= 1}
                 onClick={() => {
                   setCurrentPage(p => Math.max(1, p - 1));
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className="px-4 py-2 bg-white dark:bg-slate-900 hover:bg-slate-100 disabled:opacity-40 rounded-lg border border-slate-300 dark:border-slate-800 shadow-xs"
+                className="px-4 py-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-container-low)] disabled:opacity-40 rounded-xl border border-[var(--color-outline)] shadow-2xs"
               >
                 ← עמוד קודם
               </button>
@@ -504,7 +515,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
                   setCurrentPage(p => Math.min(totalPages, p + 1));
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className="px-4 py-2 bg-white dark:bg-slate-900 hover:bg-slate-100 disabled:opacity-40 rounded-lg border border-slate-300 dark:border-slate-800 shadow-xs"
+                className="px-4 py-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-container-low)] disabled:opacity-40 rounded-xl border border-[var(--color-outline)] shadow-2xs"
               >
                 עמוד הבא →
               </button>
@@ -517,21 +528,21 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
           <div
             onDragOver={e => e.preventDefault()}
             onDrop={handleDropUnlink}
-            className="p-4 bg-white dark:bg-slate-900 rounded-xl shadow-xs border border-slate-200 dark:border-slate-800 space-y-3 max-h-[80vh] overflow-y-auto"
+            className="p-4 bg-[var(--color-surface)] rounded-2xl shadow-2xs border border-[var(--color-outline-variant)] space-y-3 max-h-[80vh] overflow-y-auto"
           >
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
-              <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+            <div className="flex items-center justify-between border-b border-[var(--color-outline)] pb-2">
+              <h3 className="text-xs font-bold text-[var(--color-on-surface)] flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-rose-500" />
                 <span>פירושים ללא מקור מקושר ({unlinkedCommLines.length})</span>
               </h3>
             </div>
 
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            <p className="text-[11px] text-[var(--color-on-surface-variant)]">
               שורות אלו יוצגו ברקע אדום שקוף עדין לציון חוסר התאמה. ניתן לגרור שורה לכרטיסיית מקור משמאל.
             </p>
 
             {unlinkedCommLines.length === 0 ? (
-              <div className="py-8 text-center text-xs text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-50/50 dark:bg-emerald-950/20 rounded-lg border border-emerald-200 dark:border-emerald-900/40">
+              <div className="py-8 text-center text-xs text-emerald-700 dark:text-emerald-400 font-semibold bg-emerald-50/50 dark:bg-emerald-950/20 rounded-xl border border-emerald-200 dark:border-emerald-900/40">
                 ✓ כל שורות הפירוש מקושרות בהצלחה!
               </div>
             ) : (

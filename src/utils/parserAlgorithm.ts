@@ -54,17 +54,29 @@ export function areHeadersMatching(h1: string, h2: string): boolean {
 }
 
 /**
- * Keywords for Secondary Source routing in Shas
+ * Keywords for Secondary Source routing
  */
 const RASHI_KEYWORDS = [
-  'רש"י', 'רשד"ה', 'רש"י ד"ה', 'ברש"י ד"ה', 'ברשד"ה', 'ברש"י', 'רש"י בד"ה', 'רשי'
+  'רש"י', 'רשד"ה', 'רש"י ד"ה', 'ברש"י ד"ה', 'ברשד"ה', 'ברש"י', 'רש"י בד"ה', 'רשי', 'ברשי'
 ];
 
 const TOSAFOT_KEYWORDS = [
   'תוספות', 'תוספות ד"ה', 'תוד"ה', 'תוס\'', 'תוס\' ד"ה', 'בתוס\'', 'בתוספות',
   'בתוס\' ד"ה', 'בתוספות ד"ה', 'בתוד"ה', 'תוס\' בד"ה', 'תוספות בד"ה', 'בתו\' ד"ה',
-  'תו\' ד"ה', 'תו\' בד"ה', 'תוספות'
+  'תו\' ד"ה', 'תו\' בד"ה'
 ];
+
+/**
+ * Strips leading secondary source citation prefixes (e.g. רש"י ד"ה, תוספות ד"ה)
+ * to leave clean Dibur Hamatchil for searching secondary and primary texts.
+ */
+export function stripSecondaryPrefix(line: string): string {
+  if (!line) return '';
+  let cleaned = line.trim();
+  cleaned = cleaned.replace(/^(ברש"י\s+ד"ה|רש"י\s+ד"ה|רשד"ה|ברשד"ה|ברש"י\s+בד"ה|רש"י\s+בד"ה|ברש"י|רש"י|רשי\s+דה|רשי|בתוספות\s+ד"ה|תוספות\s+ד"ה|בתוס'\s+ד"ה|תוס'\s+ד"ה|בתוד"ה|תוד"ה|בתוספות\s+בד"ה|תוספות\s+בד"ה|בתוספות|תוספות|בתוס'|תוס'|בתו'\s+ד"ה|תו'\s+ד"ה|שם\s+ד"ה|או"ד|באו"ד)\s*[:.\-]?\s*/i, '');
+  cleaned = cleaned.replace(/^ד"ה\s*[:.\-]?\s*/i, '');
+  return cleaned.trim();
+}
 
 export interface HeaderSegment {
   headerTitle: string;
@@ -128,9 +140,10 @@ export function extractDiburHamatchil(
   let dhPart = '';
   let explicit = false;
 
-  // 1. If custom delimiter defined
-  if (delimiter && line.includes(delimiter)) {
-    const idx = line.indexOf(delimiter);
+  // 1. If custom delimiter defined, non-empty, and present in line
+  if (delimiter && delimiter.trim() && line.includes(delimiter.trim())) {
+    const trimmedDelim = delimiter.trim();
+    const idx = line.indexOf(trimmedDelim);
     dhPart = line.substring(0, idx);
     explicit = true;
   }
@@ -142,17 +155,10 @@ export function extractDiburHamatchil(
       explicit = true;
     }
   }
-  // 3. Fallback: take up to first period or colon if present, or first 6 words
-  else if (line.includes('.')) {
-    dhPart = line.substring(0, line.indexOf('.'));
-    explicit = true;
-  } else if (line.includes(':')) {
-    dhPart = line.substring(0, line.indexOf(':'));
-    explicit = true;
-  } else {
-    // First 5-8 words
-    const words = line.split(/\s+/).filter(Boolean);
-    dhPart = words.slice(0, Math.min(6, words.length)).join(' ');
+  // 3. Fallback when no delimiter configured: do NOT truncate automatically on '.' or ':'
+  else {
+    dhPart = line;
+    explicit = false;
   }
 
   const cleanDh = normalizeText(dhPart);
@@ -204,91 +210,162 @@ export function runLinkingParser(
       const trimmedLine = cLineRaw.trim();
       const normCommLine = normalizeText(trimmedLine);
 
-      // Check routing to secondary sources (Step 4 - Shas Mode)
+      // Check routing to secondary sources (Step 4)
       let targetSecondary: 'rashi' | 'tosafot' | null = null;
 
-      if (config.sourceCategory === 'shas') {
-        if (RASHI_KEYWORDS.some(kw => trimmedLine.startsWith(kw))) {
-          targetSecondary = 'rashi';
-        } else if (TOSAFOT_KEYWORDS.some(kw => trimmedLine.startsWith(kw))) {
-          targetSecondary = 'tosafot';
-        } else if (trimmedLine.startsWith('שם ד"ה') || trimmedLine.startsWith('או"ד') || trimmedLine.startsWith('באו"ד')) {
-          targetSecondary = previousSecondaryType;
-        }
+      if (RASHI_KEYWORDS.some(kw => trimmedLine.startsWith(kw))) {
+        targetSecondary = 'rashi';
+      } else if (TOSAFOT_KEYWORDS.some(kw => trimmedLine.startsWith(kw))) {
+        targetSecondary = 'tosafot';
+      } else if (trimmedLine.startsWith('שם ד"ה') || trimmedLine.startsWith('או"ד') || trimmedLine.startsWith('באו"ד')) {
+        targetSecondary = previousSecondaryType;
       }
 
       // Handle Inheritance ("שם" - Step 5)
       const startsWithSham = trimmedLine.startsWith('שם');
       let isInherited = false;
 
-      // Extract DH search text
-      const { dhText, cleanDh } = extractDiburHamatchil(trimmedLine, config.diburHamatchilDelimiter);
+      // Extract DH search text using stripped line if secondary prefix present
+      const lineForDh = stripSecondaryPrefix(trimmedLine);
+      const { dhText, cleanDh, isExplicitDelimiter } = extractDiburHamatchil(lineForDh || trimmedLine, config.diburHamatchilDelimiter);
 
       let matchedSourceLineNum: number | null = null;
       let matchedSecondaryLineNum: number | null = null;
 
-      // Primary fuzzy search function within a range
-      const findMatchingLine = (docLines: string[], start: number, end: number, searchPhrase: string): number | null => {
-        if (!searchPhrase || searchPhrase.length < 2) return null;
-        
-        const words = searchPhrase.split(/\s+/).filter(Boolean);
-        let bestLine: number | null = null;
-        let maxMatchCount = 0;
+      // Primary search function: matches phrase or finds longest contiguous matching prefix from commentary line
+      const searchLineInDoc = (
+        docLines: string[],
+        start: number,
+        end: number,
+        searchPhrase: string,
+        fullLineText: string,
+        isExplicit: boolean
+      ): { lineNum: number | null; matchedCount: number } => {
+        if (!docLines || docLines.length === 0) return { lineNum: null, matchedCount: 0 };
 
-        // Try searching from last matched position first
-        const searchOrder: number[] = [];
-        for (let l = start; l <= end; l++) {
-          if (l <= docLines.length) searchOrder.push(l);
-        }
+        const validStart = Math.max(1, Math.min(start, docLines.length));
+        const validEnd = Math.max(validStart, Math.min(end, docLines.length));
 
-        for (const lNum of searchOrder) {
-          const docLineNorm = normalizeText(docLines[lNum - 1]);
-          if (!docLineNorm) continue;
+        const searchWords = searchPhrase.split(/\s+/).filter(Boolean);
+        const fullWords = normalizeText(fullLineText).split(/\s+/).filter(Boolean);
 
-          // Check if full phrase exists or count matching words
-          if (docLineNorm.includes(searchPhrase)) {
-            return lNum; // Exact match found
+        const searchRanges = [
+          { s: validStart, e: validEnd },
+          { s: 1, e: docLines.length }
+        ];
+
+        for (const range of searchRanges) {
+          let bestLine: number | null = null;
+          let maxMatchedCount = 0;
+          let minDistance = Infinity;
+
+          for (let lNum = range.s; lNum <= range.e; lNum++) {
+            const docLineRaw = docLines[lNum - 1];
+            if (!docLineRaw) continue;
+            const docLineNorm = normalizeText(docLineRaw);
+            if (!docLineNorm) continue;
+
+            const docWords = docLineNorm.split(/\s+/).filter(Boolean);
+            if (docWords.length === 0) continue;
+
+            let currentMatchCount = 0;
+
+            if (isExplicit) {
+              // Explicit delimiter / כו': search for searchPhrase in docLineNorm
+              if (docLineNorm.includes(searchPhrase)) {
+                currentMatchCount = searchWords.length + 5;
+              } else {
+                let matched = 0;
+                searchWords.forEach(w => {
+                  if (docLineNorm.includes(w)) matched++;
+                });
+                currentMatchCount = matched;
+              }
+            } else {
+              // No explicit delimiter: find longest contiguous sequence of words starting from start of commentary line
+              for (let startWIdx = 0; startWIdx <= Math.min(1, fullWords.length - 1); startWIdx++) {
+                for (let docWIdx = 0; docWIdx < docWords.length; docWIdx++) {
+                  let k = 0;
+                  while (
+                    startWIdx + k < fullWords.length &&
+                    docWIdx + k < docWords.length &&
+                    fullWords[startWIdx + k] === docWords[docWIdx + k]
+                  ) {
+                    k++;
+                  }
+                  if (k > currentMatchCount) {
+                    currentMatchCount = k;
+                  }
+                }
+              }
+            }
+
+            const minThreshold = isExplicit 
+              ? Math.min(2, Math.max(1, searchWords.length))
+              : Math.min(2, Math.max(1, fullWords.length));
+
+            if (currentMatchCount >= minThreshold) {
+              const dist = Math.abs(lNum - range.s);
+              if (currentMatchCount > maxMatchedCount) {
+                maxMatchedCount = currentMatchCount;
+                bestLine = lNum;
+                minDistance = dist;
+              } else if (currentMatchCount === maxMatchedCount && dist < minDistance) {
+                bestLine = lNum;
+                minDistance = dist;
+              }
+            }
           }
 
-          let matchedWords = 0;
-          words.forEach(w => {
-            if (docLineNorm.includes(w)) matchedWords++;
-          });
-
-          if (matchedWords >= 2 && matchedWords > maxMatchCount) {
-            maxMatchCount = matchedWords;
-            bestLine = lNum;
+          if (bestLine !== null) {
+            return { lineNum: bestLine, matchedCount: maxMatchedCount };
           }
         }
 
-        return (maxMatchCount >= Math.min(2, words.length)) ? bestLine : null;
+        return { lineNum: null, matchedCount: 0 };
       };
 
+      let srcMatchRes = { lineNum: null as number | null, matchedCount: 0 };
+      let secMatchRes = { lineNum: null as number | null, matchedCount: 0 };
+
       // Search in secondary source if routed
-      if (targetSecondary === 'rashi' && rashiDoc && rashiSeg) {
-        matchedSecondaryLineNum = findMatchingLine(
+      if (targetSecondary === 'rashi' && rashiDoc) {
+        secMatchRes = searchLineInDoc(
           rashiDoc.lines,
-          rashiSeg.startLine,
-          rashiSeg.endLine,
-          cleanDh
+          rashiSeg ? rashiSeg.startLine : 1,
+          rashiSeg ? rashiSeg.endLine : rashiDoc.lines.length,
+          cleanDh,
+          lineForDh || trimmedLine,
+          isExplicitDelimiter
         );
-      } else if (targetSecondary === 'tosafot' && tosafotDoc && tosafotSeg) {
-        matchedSecondaryLineNum = findMatchingLine(
+        matchedSecondaryLineNum = secMatchRes.lineNum;
+      } else if (targetSecondary === 'tosafot' && tosafotDoc) {
+        secMatchRes = searchLineInDoc(
           tosafotDoc.lines,
-          tosafotSeg.startLine,
-          tosafotSeg.endLine,
-          cleanDh
+          tosafotSeg ? tosafotSeg.startLine : 1,
+          tosafotSeg ? tosafotSeg.endLine : tosafotDoc.lines.length,
+          cleanDh,
+          lineForDh || trimmedLine,
+          isExplicitDelimiter
         );
+        matchedSecondaryLineNum = secMatchRes.lineNum;
       }
 
       // Search in primary source segment
-      if (srcSeg) {
-        matchedSourceLineNum = findMatchingLine(
-          srcDoc.lines,
-          srcSeg.startLine,
-          srcSeg.endLine,
-          cleanDh
-        );
+      srcMatchRes = searchLineInDoc(
+        srcDoc.lines,
+        srcSeg ? srcSeg.startLine : 1,
+        srcSeg ? srcSeg.endLine : srcDoc.lines.length,
+        cleanDh,
+        lineForDh || trimmedLine,
+        isExplicitDelimiter
+      );
+      matchedSourceLineNum = srcMatchRes.lineNum;
+
+      // If secondary source line was found, but primary source line wasn't matched directly:
+      if (matchedSecondaryLineNum && !matchedSourceLineNum) {
+        matchedSourceLineNum = previousLink?.line_index_2 || lastMatchedSrcLineIndex || (srcSeg ? srcSeg.startLine : 1);
+        isInherited = true;
       }
 
       // Rule for 'שם' inheritance
@@ -337,7 +414,15 @@ export function runLinkingParser(
 
       // Calculate initial DH word highlight range (words count)
       const wordsInLine = trimmedLine.split(/\s+/).filter(Boolean);
-      const dhWordCount = dhText ? dhText.split(/\s+/).filter(Boolean).length : Math.min(4, wordsInLine.length);
+      let dhWordCount = 0;
+      if (isExplicitDelimiter && dhText) {
+        dhWordCount = dhText.split(/\s+/).filter(Boolean).length;
+      } else {
+        dhWordCount = srcMatchRes.matchedCount > 0 
+          ? srcMatchRes.matchedCount 
+          : (secMatchRes.matchedCount > 0 ? secMatchRes.matchedCount : Math.min(4, wordsInLine.length));
+      }
+
       dhHighlights[cLineIdx] = {
         wordStart: 0,
         wordCount: Math.max(1, Math.min(dhWordCount, wordsInLine.length))

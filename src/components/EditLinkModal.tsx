@@ -42,34 +42,34 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl max-w-md w-full overflow-hidden text-right">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-[var(--color-surface)] text-[var(--color-on-surface)] rounded-2xl border border-[var(--color-outline-variant)] shadow-xl max-w-md w-full overflow-hidden text-right">
         {/* Header */}
-        <div className="p-4 bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-sm">
-            <ArrowLeftRight className="w-4 h-4" />
+        <div className="p-4 bg-[var(--color-surface-container-high)] border-b border-[var(--color-outline)] flex items-center justify-between">
+          <div className="flex items-center gap-2 text-[var(--color-primary)] font-bold text-sm">
+            <ArrowLeftRight className="w-4.5 h-4.5" />
             <span>עריכת קישור שורת פירוש #{commLineIndex}</span>
           </div>
           <button
             onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-md"
+            className="p-1 text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)] rounded-lg transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-5 space-y-4">
-          <div className="bg-slate-50 dark:bg-slate-950 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
-            <span className="block text-[11px] font-bold text-slate-400 mb-1">טקסט השורה:</span>
-            <p className="text-xs text-slate-800 dark:text-slate-200 font-serif leading-relaxed line-clamp-3">
+        <div className="p-5 space-y-4 bg-[var(--color-surface-container-low)]">
+          <div className="bg-[var(--color-surface)] p-3 rounded-xl border border-[var(--color-outline-variant)] shadow-2xs">
+            <span className="block text-[11px] font-bold text-[var(--color-on-surface-variant)] mb-1">טקסט השורה:</span>
+            <p className="text-xs text-[var(--color-on-surface)] font-serif leading-relaxed line-clamp-3">
               {commLineText}
             </p>
           </div>
 
           {/* Line Index Picker */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+            <label className="block text-xs font-bold text-[var(--color-on-surface)]">
               אינדקס שורת מקור להוספה/עדכון (1 עד {sourceLinesCount}):
             </label>
             <input
@@ -78,34 +78,32 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
               max={sourceLinesCount}
               value={targetLine}
               onChange={e => setTargetLine(parseInt(e.target.value) || 1)}
-              className="w-full p-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full p-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-xl text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] font-medium"
             />
           </div>
 
-          {/* Secondary Routing Option (in Shas) */}
-          {isShas && (
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                ניתוב אל מקור משני (אופציונלי):
-              </label>
-              <select
-                value={secondary}
-                onChange={e => setSecondary(e.target.value as any)}
-                className="w-full p-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="none">קישור ישיר למקור הראשי</option>
-                <option value="rashi">מקור משני: רש"י</option>
-                <option value="tosafot">מקור משני: תוספות</option>
-              </select>
-            </div>
-          )}
+          {/* Secondary Routing Option */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-[var(--color-on-surface)]">
+              ניתוב אל מקור משני (אופציונלי):
+            </label>
+            <select
+              value={secondary}
+              onChange={e => setSecondary(e.target.value as any)}
+              className="w-full p-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-xl text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] font-medium"
+            >
+              <option value="none">קישור ישיר למקור הראשי</option>
+              <option value="rashi">מקור משני: רש"י</option>
+              <option value="tosafot">מקור משני: תוספות</option>
+            </select>
+          </div>
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
+        <div className="p-4 bg-[var(--color-surface-container-high)] border-t border-[var(--color-outline)] flex items-center justify-between">
           <button
             onClick={handleDelete}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg border border-rose-200 dark:border-rose-900 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900 transition-colors"
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span>מחק קישור</span>
@@ -114,13 +112,13 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className="px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-700 rounded-lg transition-colors"
+              className="px-3.5 py-1.5 text-xs font-semibold text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)] rounded-xl transition-colors"
             >
               ביטול
             </button>
             <button
               onClick={handleApply}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-500 rounded-lg transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:opacity-90 rounded-xl transition-all shadow-2xs"
             >
               <Check className="w-3.5 h-3.5" />
               <span>אישור ושמירה</span>
