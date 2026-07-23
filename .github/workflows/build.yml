@@ -1,10 +1,10 @@
-name: Build and Pack Plugin
+name: Build Single File Plugin
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch: # מאפשר להריץ את הבנייה ידנית מתוך לשונית Actions ב-GitHub
+  workflow_dispatch: # מאפשר הרצה ידנית מתוך לשונית Actions
 
 jobs:
   build:
@@ -22,14 +22,14 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build project
+      - name: Build Single File HTML
         run: bun run build
 
       - name: Pack plugin
         run: bun run scripts/pack-plugin.js
 
-      - name: Upload artifact
+      - name: Upload Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: plugin-package
-          path: '*.zip' # במידה וסקריפט ה-pack-plugin מייצר קובץ zip בתיקייה הראשית
+          name: plugin-release
+          path: '*.zip' # שומר את קובץ ה-ZIP שנוצר לבורד ההורדות
