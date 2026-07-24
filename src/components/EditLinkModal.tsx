@@ -27,7 +27,8 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
   );
 
   const handleApply = () => {
-    if (targetLine < 1 || targetLine > sourceLinesCount) return;
+    if (targetLine < 1) return;
+    if (secondary === 'none' && targetLine > sourceLinesCount) return;
     onSave(
       commLineIndex,
       targetLine,
@@ -46,8 +47,8 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
       <div className="bg-[var(--color-surface)] text-[var(--color-on-surface)] rounded-2xl border border-[var(--color-outline-variant)] shadow-xl max-w-md w-full overflow-hidden text-right">
         {/* Header */}
         <div className="p-4 bg-[var(--color-surface-container-high)] border-b border-[var(--color-outline)] flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[var(--color-primary)] font-bold text-sm">
-            <ArrowLeftRight className="w-4.5 h-4.5" />
+          <div className="flex items-center gap-2 text-[var(--color-on-surface)] font-bold text-sm">
+            <ArrowLeftRight className="w-4.5 h-4.5 text-current" />
             <span>עריכת קישור שורת פירוש #{commLineIndex}</span>
           </div>
           <button
