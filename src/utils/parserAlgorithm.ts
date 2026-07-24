@@ -239,9 +239,11 @@ export function runLinkingParser(
       if (RASHI_KEYWORDS.some(kw => normalizedPrefixLine.startsWith(kw))) {
         targetSecondary = 'rashi';
         explicitSecondaryTarget = true;
+        console.log(`✅ Line ${cLineIdx}: Detected Rashi keyword. normalizedPrefixLine='${normalizedPrefixLine}'`);
       } else if (TOSAFOT_KEYWORDS.some(kw => normalizedPrefixLine.startsWith(kw))) {
         targetSecondary = 'tosafot';
         explicitSecondaryTarget = true;
+        console.log(`✅ Line ${cLineIdx}: Detected Tosafot keyword. normalizedPrefixLine='${normalizedPrefixLine}'`);
       } else if (normalizedPrefixLine.match(/^(שם\s+ד"ה|או"ד|באו"ד)/i)) {
         targetSecondary = previousSecondaryType;
       }
@@ -254,7 +256,7 @@ export function runLinkingParser(
       const lineForDh = stripSecondaryPrefix(trimmedLine);
       // For secondary target explicit lines, if stripSecondaryPrefix returns empty, skip this line
       if (explicitSecondaryTarget && !lineForDh.trim()) {
-        return; // No DH text after removing secondary prefix - skip this commentary line
+        continue; // No DH text after removing secondary prefix - skip this commentary line
       }
       // For non-explicit lines, use lineForDh or fallback to trimmedLine
       const lineForDhExtraction = lineForDh.trim() ? lineForDh : trimmedLine;
@@ -312,20 +314,18 @@ export function runLinkingParser(
                 currentMatchCount = matched;
               }
             } else {
-              // No explicit delimiter: find longest contiguous sequence of words starting from start of commentary line
-              for (let startWIdx = 0; startWIdx <= Math.min(1, fullWords.length - 1); startWIdx++) {
-                for (let docWIdx = 0; docWIdx < docWords.length; docWIdx++) {
-                  let k = 0;
-                  while (
-                    startWIdx + k < fullWords.length &&
-                    docWIdx + k < docWords.length &&
-                    fullWords[startWIdx + k] === docWords[docWIdx + k]
-                  ) {
-                    k++;
-                  }
-                  if (k > currentMatchCount) {
-                    currentMatchCount = k;
-                  }
+              // No explicit delimiter: find longest contiguous sequence of words starting from start of commentary line (only from word 0)
+              for (let docWIdx = 0; docWIdx < docWords.length; docWIdx++) {
+                let k = 0;
+                while (
+                  k < fullWords.length &&
+                  docWIdx + k < docWords.length &&
+                  fullWords[k] === docWords[docWIdx + k]
+                ) {
+                  k++;
+                }
+                if (k > currentMatchCount) {
+                  currentMatchCount = k;
                 }
               }
             }
@@ -360,6 +360,7 @@ export function runLinkingParser(
 
       // Search in secondary source if routed
       if (targetSecondary === 'rashi' && rashiDoc) {
+        console.log(`🔍 Searching for Rashi: keyword='${normalizedPrefixLine}', cleanDh='${cleanDh}', lineForDhExtraction='${lineForDhExtraction}'`);
         secMatchRes = searchLineInDoc(
           rashiDoc.lines,
           rashiSeg ? rashiSeg.startLine : 1,
@@ -368,8 +369,10 @@ export function runLinkingParser(
           lineForDhExtraction,
           isExplicitDelimiter
         );
+        console.log(`  → Rashi search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
         matchedSecondaryLineNum = secMatchRes.lineNum;
       } else if (targetSecondary === 'tosafot' && tosafotDoc) {
+        console.log(`🔍 Searching for Tosafot: keyword='${normalizedPrefixLine}', cleanDh='${cleanDh}', lineForDhExtraction='${lineForDhExtraction}'`);
         secMatchRes = searchLineInDoc(
           tosafotDoc.lines,
           tosafotSeg ? tosafotSeg.startLine : 1,
@@ -378,6 +381,7 @@ export function runLinkingParser(
           lineForDhExtraction,
           isExplicitDelimiter
         );
+        console.log(`  → Tosafot search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
         matchedSecondaryLineNum = secMatchRes.lineNum;
       }
 
@@ -388,7 +392,7 @@ export function runLinkingParser(
           srcSeg ? srcSeg.startLine : 1,
           srcSeg ? srcSeg.endLine : srcDoc.lines.length,
           cleanDh,
-          lineForDh || trimmedLine,
+          lineForDhExtraction,
           isExplicitDelimiter
         );
         matchedSourceLineNum = srcMatchRes.lineNum;
@@ -444,6 +448,10 @@ export function runLinkingParser(
         lastMatchedSrcLineIndex = matchedSourceLineNum;
         
         const isSecondaryLink = Boolean(targetSecondary && matchedSecondaryLineNum);
+        if (isSecondaryLink) {
+          console.log(`🔗 Line ${cLineIdx}: Creating SECONDARY link: targetSecondary=${targetSecondary}, matchedSecondaryLineNum=${matchedSecondaryLineNum}, matchedSourceLineNum=${matchedSourceLineNum}`);
+        }
+        
         const headerTitle = isSecondaryLink
           ? (targetSecondary === 'rashi' ? rashiSeg?.headerTitle : tosafotSeg?.headerTitle) || config.targetBookName
           : srcSeg ? srcSeg.headerTitle : config.targetBookName;
