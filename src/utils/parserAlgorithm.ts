@@ -7,18 +7,18 @@ import { OtzariaLink, PluginConfig, DHHighlight } from '../types';
 export function normalizeText(text: string, keepColonsAndDots: boolean = false): string {
   if (!text) return '';
   
-  // 1. Remove HTML tags
-  let cleaned = text.replace(/<[^>]*>/g, ' ');
+  // 1. Normalize quotes and remove HTML tags
+  let cleaned = normalizeHebrewQuotes(text).replace(/<[^>]*>/g, ' ');
   
   // 2. Remove Nikud and Cantillation (teamim): U+0591 to U+05C7
   cleaned = cleaned.replace(/[\u0591-\u05C7]/g, '');
 
   if (keepColonsAndDots) {
-    // Keep letters, digits, spaces, . and :
-    cleaned = cleaned.replace(/[^\u05D0-\u05EA0-9\s.:]/g, ' ');
+    // Keep letters, digits, spaces, ., :, ' and "
+    cleaned = cleaned.replace(/[^\u05D0-\u05EA0-9\s.:'"]+/g, ' ');
   } else {
-    // Keep letters, digits, spaces only
-    cleaned = cleaned.replace(/[^\u05D0-\u05EA0-9\s]/g, ' ');
+    // Keep letters, digits, spaces, ' and "
+    cleaned = cleaned.replace(/[^\u05D0-\u05EA0-9\s'\"]+/g, ' ');
   }
 
   // Normalize spaces
