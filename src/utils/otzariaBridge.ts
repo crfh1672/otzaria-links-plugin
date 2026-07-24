@@ -155,7 +155,17 @@ export async function fetchBookLinks(bookId: string): Promise<any[]> {
       console.warn(`Otzaria getBookLinks failed for ${bookId}`, e);
     }
   }
-  return MOCK_BOOK_LINKS[bookId] || [];
+
+  if (MOCK_BOOK_LINKS[bookId]) {
+    return MOCK_BOOK_LINKS[bookId];
+  }
+
+  const foundKey = Object.keys(MOCK_BOOK_LINKS).find(k => k === bookId || k.includes(bookId) || bookId.includes(k));
+  if (foundKey) {
+    return MOCK_BOOK_LINKS[foundKey];
+  }
+
+  return [];
 }
 
 export async function notifyError(message: string): Promise<void> {

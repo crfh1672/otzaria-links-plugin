@@ -221,7 +221,7 @@ export function runLinkingParser(
 
       const trimmedLine = cLineRaw.trim();
       const normCommLine = normalizeText(trimmedLine);
-      const normalizedPrefixLine = normalizeHebrewQuotes(trimmedLine);
+      const normalizedPrefixLine = normalizeHebrewQuotes(trimmedLine).replace(/^[^\p{L}\p{N}]*/u, '');
 
       // Check routing to secondary sources (Step 4)
       let targetSecondary: 'rashi' | 'tosafot' | null = null;
@@ -233,7 +233,7 @@ export function runLinkingParser(
       } else if (TOSAFOT_KEYWORDS.some(kw => normalizedPrefixLine.startsWith(kw))) {
         targetSecondary = 'tosafot';
         explicitSecondaryTarget = true;
-      } else if (normalizedPrefixLine.startsWith('שם ד"ה') || normalizedPrefixLine.startsWith('או"ד') || normalizedPrefixLine.startsWith('באו"ד')) {
+      } else if (normalizedPrefixLine.match(/^(שם\s+ד"ה|או"ד|באו"ד)/i)) {
         targetSecondary = previousSecondaryType;
       }
 

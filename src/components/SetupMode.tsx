@@ -65,6 +65,45 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
     }
   }, [category]);
 
+  const getSecondaryBookVariants = (targetBook: string, source: 'rashi' | 'tosafot') => {
+    const base = targetBook.replace(/^מסכת\s+/i, '').trim();
+    if (source === 'rashi') {
+      return [
+        `רש"י על ${targetBook}`,
+        `רש"י על ${base}`,
+        `רש"י ${targetBook}`,
+        `רש"י ${base}`,
+        `רש"י על מסכת ${base}`,
+        `רש"י על ספר ${base}`
+      ];
+    }
+    return [
+      `תוספות על ${targetBook}`,
+      `תוספות על ${base}`,
+      `תוס' על ${targetBook}`,
+      `תוס' על ${base}`,
+      `תוס על ${targetBook}`,
+      `תוס על ${base}`,
+      `תוסות על ${targetBook}`,
+      `תוסות על ${base}`,
+      `תוספות על מסכת ${base}`,
+      `תוס' על מסכת ${base}`
+    ];
+  };
+
+  const tryFetchSecondarySource = async (
+    variants: string[]
+  ): Promise<{ text?: string; links: any[] }> => {
+    for (const candidate of variants) {
+      const raw = await fetchBookContent(candidate);
+      if (raw && !raw.includes('לא נמצא תוכן עבור ספר זה')) {
+        const candidateLinks = await fetchBookLinks(candidate);
+        return { text: raw, links: candidateLinks || [] };
+      }
+    }
+    return { links: [] };
+  };
+
   // Load Library Tree on mount
   useEffect(() => {
     let isMounted = true;
@@ -129,20 +168,22 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
 
       // Fetch secondary source files (Rashi and Tosafot for target book if available)
       try {
-        const rawRashi = await fetchBookContent(`רש"י על ${targetBook}`);
-        if (rawRashi && !rawRashi.includes('לא נמצא תוכן עבור ספר זה')) {
-          rashiText = rawRashi;
-          rashiLinks = await fetchBookLinks(`רש"י על ${targetBook}`);
+        const rashiVariants = getSecondaryBookVariants(targetBook, 'rashi');
+        const rashiResult = await tryFetchSecondarySource(rashiVariants);
+        if (rashiResult.text) {
+          rashiText = rashiResult.text;
+          rashiLinks = rashiResult.links;
         }
       } catch {
         rashiText = undefined;
       }
 
       try {
-        const rawTosafot = await fetchBookContent(`תוספות על ${targetBook}`);
-        if (rawTosafot && !rawTosafot.includes('לא נמצא תוכן עבור ספר זה')) {
-          tosafotText = rawTosafot;
-          tosafotLinks = await fetchBookLinks(`תוספות על ${targetBook}`);
+        const tosafotVariants = getSecondaryBookVariants(targetBook, 'tosafot');
+        const tosafotResult = await tryFetchSecondarySource(tosafotVariants);
+        if (tosafotResult.text) {
+          tosafotText = tosafotResult.text;
+          tosafotLinks = tosafotResult.links;
         }
       } catch {
         tosafotText = undefined;
