@@ -188,94 +188,38 @@ export function parseDocumentSegments(rawText: string): { lines: string[]; segme
 }
 
 /**
- * Strips leading category prefix (e.g. גמרא, משנה, גמ', מש') from Dibbur Hamatchil text
- */
-export function stripCategoryPrefix(text: string): string {
-  if (!text) return '';
-  return text.replace(/^(?:גמרא|גמ'|גמ|משנה|מש'|מש)\s+/i, '').trim();
-}
-
-/**
- * Interface for multi-segment Dibbur Hamatchil parsing results
- */
-export interface DhSegmentsResult {
-  dhText: string;
-  cleanDh: string;
-  firstSegment: string;
-  subsequentSegments: string[];
-  isExplicitDelimiter: boolean;
-}
-
-/**
- * Extracts Dibur Hamatchil segments (Segment 1 = Anchor Segment, Segments 2+ = Verification Segments)
- */
-export function extractDiburHamatchilSegments(
-  line: string,
-  delimiter?: string
-): DhSegmentsResult {
-  if (!line || !line.trim()) {
-    return { dhText: '', cleanDh: '', firstSegment: '', subsequentSegments: [], isExplicitDelimiter: false };
-  }
-
-  const normLine = normalizeText(line, true);
-  if (!normLine) {
-    return { dhText: '', cleanDh: '', firstSegment: '', subsequentSegments: [], isExplicitDelimiter: false };
-  }
-
-  // 1. Custom delimiter
-  if (delimiter && delimiter.trim() && line.includes(delimiter.trim())) {
-    const parts = line.split(delimiter.trim()).map(p => p.trim()).filter(Boolean);
-    const first = parts[0] || '';
-    const subs = parts.slice(1);
-    return {
-      dhText: first,
-      cleanDh: normalizeText(first),
-      firstSegment: first,
-      subsequentSegments: subs,
-      isExplicitDelimiter: true
-    };
-  }
-
-  // 2. Keyword regex for כו' / וכו' / כו"ה / וכו"ה / כולי / וכולי
-  const kwSplitRegex = /\s+(?:ו?כו['"]?|ו?כו"ה|ו?כולי)\b/gi;
-  if (line.match(kwSplitRegex)) {
-    const parts = line.split(kwSplitRegex).map(p => p.trim()).filter(Boolean);
-    const first = parts[0] || '';
-    const subs = parts.slice(1);
-    return {
-      dhText: first,
-      cleanDh: normalizeText(first),
-      firstSegment: first,
-      subsequentSegments: subs,
-      isExplicitDelimiter: true
-    };
-  }
-
-  // Fallback
-  return {
-    dhText: line.trim(),
-    cleanDh: normalizeText(line),
-    firstSegment: line.trim(),
-    subsequentSegments: [],
-    isExplicitDelimiter: false
-  };
-}
-
-/**
  * Extracts potential Dibur Hamatchil search phrase from commentary line.
- * Strictly stops at the FIRST occurrence of כו' / וכו' or custom delimiter as Anchor Segment.
  */
 export function extractDiburHamatchil(
   line: string,
   delimiter?: string
-): { dhText: string; cleanDh: string; subsequentSegments: string[]; isExplicitDelimiter: boolean } {
-  const res = extractDiburHamatchilSegments(line, delimiter);
-  return {
-    dhText: res.firstSegment,
-    cleanDh: res.cleanDh,
-    subsequentSegments: res.subsequentSegments,
-    isExplicitDelimiter: res.isExplicitDelimiter
-  };
+): { dhText: string; cleanDh: string; isExplicitDelimiter: boolean } {
+  const normLine = normalizeText(line, true);
+  if (!normLine) return { dhText: '', cleanDh: '', isExplicitDelimiter: false };
+
+  let dhPart = '';
+  let explicit = false;
+
+  // 1. If custom delimiter defined, non-empty, and present in line
+  if (delimiter && delimiter.trim() && line.includes(delimiter.trim())) {
+    const trimmedDelim = delimiter.trim();
+    const idx = line.indexOf(trimmedDelim);
+    dhPart = line.substring(0, idx);
+    explicit = true;
+  }
+  // 2. Check for כו' or וכו'
+  else if (/\bו?כו'/i.test(line)) {
+    dhPart = line;
+    explicit = true;
+  }
+  // 3. Fallback when no delimiter configured: do NOT truncate automatically on '.' or ':'
+  else {
+    dhPart = line;
+    explicit = false;
+  }
+
+  const cleanDh = normalizeText(dhPart);
+  return { dhText: dhPart.trim(), cleanDh, isExplicitDelimiter: explicit };
 }
 
 /**
@@ -359,17 +303,170 @@ export function runLinkingParser(
 
       const isBaadRegex = /^(?:שם\s+)?(?:או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד)(?:\s|$|[:.\-])/i;
       const isBaad = Boolean(normalizedPrefixLine.match(isBaadRegex));
-      const isJustSham = trimmedLine.startsWith('שם') && !normalizedPrefixLine.match(/^שם\s+(?:ד"ה|דה)/i);
+      const isJustSham = trimmedLine.startsWith('שם') && !normalizedPrefixLine.match(/^שם\s+(?:ד"ה|דה|בד"ה|בדה)(?:\s|$|[:.\-])/i);
+
+      // Handle Inheritance ("שם" - Step 5)
       const shouldInheritLine = isBaad || isJustSham;
       let isInherited = false;
+
+      // Extract DH search text using stripped line if secondary prefix present
       const lineForDh = stripSecondaryPrefix(trimmedLine);
+      console.log(`  🔍 lineForDh='${lineForDh}' (after stripSecondaryPrefix)`);
+      // For secondary target explicit lines, if stripSecondaryPrefix returns empty, skip this line
+      if (explicitSecondaryTarget && !lineForDh.trim()) {
+        console.log(`  ⏭️  SKIP: explicit secondary but no DH text`);
+        continue; // No DH text after removing secondary prefix - skip this commentary line
+      }
+      // For non-explicit lines, use lineForDh or fallback to trimmedLine
       const lineForDhExtraction = lineForDh.trim() ? lineForDh : trimmedLine;
       console.log(`  🔎 lineForDhExtraction='${lineForDhExtraction}'`);
-      const { dhText, cleanDh, subsequentSegments, isExplicitDelimiter } = extractDiburHamatchil(lineForDhExtraction, config.diburHamatchilDelimiter);
-      console.log(`  📌 dhText='${dhText}', cleanDh='${cleanDh}', subs=[${subsequentSegments.join(' | ')}], isExplicitDelimiter=${isExplicitDelimiter}`);
+      const { dhText, cleanDh, isExplicitDelimiter } = extractDiburHamatchil(lineForDhExtraction, config.diburHamatchilDelimiter);
+      console.log(`  📌 dhText='${dhText}', cleanDh='${cleanDh}', isExplicitDelimiter=${isExplicitDelimiter}`);
 
       let matchedSourceLineNum: number | null = null;
       let matchedSecondaryLineNum: number | null = null;
+
+      // First Anchor Priority search for primary sources containing כו' / וכו'.
+      const searchPrimaryWithFirstAnchor = (
+        docLines: string[],
+        start: number,
+        end: number,
+        fullLineText: string,
+        idfMap?: Record<string, number>,
+        prevLineNum?: number | null
+      ): { lineNum: number | null; matchedCount: number; expectedWeight: number } => {
+        if (!docLines || docLines.length === 0) {
+          return { lineNum: null, matchedCount: 0, expectedWeight: 0 };
+        }
+
+        const validStart = Math.max(1, Math.min(start, docLines.length));
+        const validEnd = Math.max(validStart, Math.min(end, docLines.length));
+
+        const segments = fullLineText.split(/\bו?כו'/i).map(s => s.trim()).filter(Boolean);
+        if (segments.length <= 1) {
+          const cleanDh = normalizeText(fullLineText);
+          return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum);
+        }
+
+        const seg1 = segments[0];
+        const seg2 = segments[1];
+        const seg3 = segments[2];
+
+        const seg1Words = normalizeText(seg1).split(/\s+/).filter(Boolean);
+        const seg2Words = seg2 ? normalizeText(seg2).split(/\s+/).filter(Boolean) : [];
+        const seg3Words = seg3 ? normalizeText(seg3).split(/\s+/).filter(Boolean) : [];
+
+        const abbrDict = config.customAbbreviations || DEFAULT_ABBREVIATIONS;
+        const enableFuzzy = config.useFuzzyMatching !== false;
+
+        const seg1ExpectedWeight = seg1Words.reduce((sum, w) => sum + getCombinedWordWeight(w, enableWordWeighting, idfMap), 0);
+        const fullWords = normalizeText(fullLineText).split(/\s+/).filter(Boolean);
+        const expectedWeight = fullWords.reduce((sum, w) => sum + getCombinedWordWeight(w, enableWordWeighting, idfMap), 0);
+
+        let bestLine: number | null = null;
+        let maxScore = -Infinity;
+        let bestMatchedCount = 0;
+
+        const scoreSegment = (segWords: string[], docLineNorm: string, docWords: string[]): number => {
+          if (segWords.length === 0) return 0;
+          const segPhrase = segWords.join(' ');
+          if (docLineNorm.includes(segPhrase)) {
+            return segWords.reduce((sum, w) => sum + getCombinedWordWeight(w, enableWordWeighting, idfMap) * 1.5, 5);
+          }
+          let matched = 0;
+          segWords.forEach(sw => {
+            let maxSim = 0;
+            docWords.forEach(dw => {
+              const sim = getWordSimilarity(sw, dw, enableFuzzy);
+              if (sim > maxSim) maxSim = sim;
+            });
+            const wWeight = getCombinedWordWeight(sw, enableWordWeighting, idfMap);
+            matched += maxSim * wWeight;
+          });
+          return matched;
+        };
+
+        for (let lNum = validStart; lNum <= validEnd; lNum++) {
+          const docLineRaw = docLines[lNum - 1];
+          if (!docLineRaw) continue;
+          const docLineNorm = normalizeText(docLineRaw);
+          if (!docLineNorm) continue;
+          const docWords = docLineNorm.split(/\s+/).filter(Boolean);
+          if (docWords.length === 0) continue;
+
+          const expSeg1 = config.useAbbreviationExpansion !== false ? expandAbbreviationsInText(seg1, docLineNorm, abbrDict) : seg1;
+          const expSeg1Words = normalizeText(expSeg1).split(/\s+/).filter(Boolean);
+
+          const score1 = Math.max(
+            scoreSegment(seg1Words, docLineNorm, docWords),
+            scoreSegment(expSeg1Words, docLineNorm, docWords)
+          );
+
+          const minSeg1Threshold = Math.max(0.4, seg1ExpectedWeight * 0.4);
+          if (score1 < minSeg1Threshold) continue;
+
+          let seqScore = score1 * 2.5; // Anchor Weight bonus for First Anchor
+          let foundSeq2 = !seg2Words.length;
+          let foundSeq3 = !seg3Words.length;
+
+          if (seg2Words.length > 0) {
+            let bestSeg2Score = 0;
+            for (let nextL = lNum; nextL <= Math.min(docLines.length, lNum + 10); nextL++) {
+              const nextRaw = docLines[nextL - 1];
+              if (!nextRaw) continue;
+              const nextNorm = normalizeText(nextRaw);
+              const nextWords = nextNorm.split(/\s+/).filter(Boolean);
+              const s2 = scoreSegment(seg2Words, nextNorm, nextWords);
+              if (s2 > bestSeg2Score) {
+                bestSeg2Score = s2;
+                if (s2 >= 0.4) foundSeq2 = true;
+              }
+            }
+            seqScore += bestSeg2Score * 1.2;
+          }
+
+          if (seg3Words.length > 0 && foundSeq2) {
+            let bestSeg3Score = 0;
+            for (let nextL = lNum; nextL <= Math.min(docLines.length, lNum + 15); nextL++) {
+              const nextRaw = docLines[nextL - 1];
+              if (!nextRaw) continue;
+              const nextNorm = normalizeText(nextRaw);
+              const nextWords = nextNorm.split(/\s+/).filter(Boolean);
+              const s3 = scoreSegment(seg3Words, nextNorm, nextWords);
+              if (s3 > bestSeg3Score) {
+                bestSeg3Score = s3;
+                if (s3 >= 0.4) foundSeq3 = true;
+              }
+            }
+            seqScore += bestSeg3Score * 1.0;
+          }
+
+          let distPenalty = 0;
+          if (prevLineNum !== null && prevLineNum !== undefined && prevLineNum > 0) {
+            const diff = lNum - prevLineNum;
+            if (diff < 0) {
+              distPenalty = Math.abs(diff) * 0.08;
+            } else if (diff > 5) {
+              distPenalty = (diff - 5) * 0.03;
+            }
+          }
+
+          const finalCandidateScore = seqScore - distPenalty;
+
+          if (finalCandidateScore > maxScore) {
+            maxScore = finalCandidateScore;
+            bestLine = lNum;
+            bestMatchedCount = score1;
+          }
+        }
+
+        if (bestLine !== null) {
+          return { lineNum: bestLine, matchedCount: bestMatchedCount, expectedWeight };
+        }
+
+        const cleanDh = normalizeText(fullLineText);
+        return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum);
+      };
 
       // Primary search function: matches phrase or finds longest contiguous matching prefix from commentary line
       const searchLineInDoc = (
@@ -380,8 +477,7 @@ export function runLinkingParser(
         fullLineText: string,
         isExplicit: boolean,
         idfMap?: Record<string, number>,
-        prevLineNum?: number | null,
-        subSegments?: string[]
+        prevLineNum?: number | null
       ): { lineNum: number | null; matchedCount: number; expectedWeight: number } => {
         if (!docLines || docLines.length === 0) {
           console.log(`    ⚠️ searchLineInDoc: docLines is empty!`);
@@ -392,19 +488,16 @@ export function runLinkingParser(
         const validEnd = Math.max(validStart, Math.min(end, docLines.length));
 
         const searchWords = searchPhrase.split(/\s+/).filter(Boolean);
-        const coreSearchPhrase = stripCategoryPrefix(searchPhrase) || searchPhrase;
-        const coreSearchWords = coreSearchPhrase.split(/\s+/).filter(Boolean);
-
         const fullWords = normalizeText(fullLineText).split(/\s+/).filter(Boolean);
         const abbrDict = config.customAbbreviations || DEFAULT_ABBREVIATIONS;
 
-        const wordsForWeight = isExplicit ? (coreSearchWords.length > 0 ? coreSearchWords : searchWords) : fullWords;
+        const wordsForWeight = isExplicit ? searchWords : fullWords;
         const expectedWeight = wordsForWeight.reduce(
           (sum, w) => sum + getCombinedWordWeight(w, enableWordWeighting, idfMap),
           0
         );
 
-        console.log(`    📊 searchLineInDoc: validStart=${validStart}, validEnd=${validEnd}, prevLineNum=${prevLineNum ?? 'none'}, coreSearchWords=[${coreSearchWords.join(',')}], subSegmentsCount=${subSegments?.length || 0}, isExplicit=${isExplicit}, expectedWeight=${expectedWeight.toFixed(2)}`);
+        console.log(`    📊 searchLineInDoc: validStart=${validStart}, validEnd=${validEnd}, prevLineNum=${prevLineNum ?? 'none'}, searchWords=[${searchWords.join(',')}], fullWords=[${fullWords.join(',')}], isExplicit=${isExplicit}, expectedWeight=${expectedWeight.toFixed(2)}`);
 
         const searchRanges = [
           { s: validStart, e: validEnd }
@@ -430,9 +523,6 @@ export function runLinkingParser(
             const expSearchPhrase = config.useAbbreviationExpansion !== false
               ? expandAbbreviationsInText(searchPhrase, docLineNorm, abbrDict)
               : searchPhrase;
-            const expCoreSearchPhrase = config.useAbbreviationExpansion !== false
-              ? expandAbbreviationsInText(coreSearchPhrase, docLineNorm, abbrDict)
-              : coreSearchPhrase;
             const expFullLineText = config.useAbbreviationExpansion !== false
               ? expandAbbreviationsInText(fullLineText, docLineNorm, abbrDict)
               : fullLineText;
@@ -440,36 +530,60 @@ export function runLinkingParser(
               ? expandAbbreviationsInText(docLineNorm, fullLineText, abbrDict)
               : docLineNorm;
 
-            const expCoreSearchWords = normalizeText(expCoreSearchPhrase).split(/\s+/).filter(Boolean);
+            const expSearchWords = normalizeText(expSearchPhrase).split(/\s+/).filter(Boolean);
             const expFullWords = normalizeText(expFullLineText).split(/\s+/).filter(Boolean);
             const expDocWords = normalizeText(expDocLineNorm).split(/\s+/).filter(Boolean);
 
             const enableFuzzy = config.useFuzzyMatching !== false;
             let currentMatchCount = 0;
 
-            // Check exact substring match for Anchor Segment 1
-            const normCore = normalizeText(coreSearchPhrase);
-            const normExpCore = normalizeText(expCoreSearchPhrase);
-            if (normCore && (docLineNorm.includes(normCore) || expDocLineNorm.includes(normExpCore))) {
-              currentMatchCount = expectedWeight + 10;
+            if (isExplicit) {
+              // Explicit delimiter / כו': search for searchPhrase or expSearchPhrase in docLineNorm / expDocLineNorm
+              if (docLineNorm.includes(searchPhrase) || expDocLineNorm.includes(expSearchPhrase)) {
+                // Perfect exact substring match gets maximum bonus based on expectedWeight
+                currentMatchCount = expectedWeight + 10;
+              } else {
+                // Word-by-word matching with fuzzy similarity score and word weighting
+                let matchedOrig = 0;
+                searchWords.forEach(sw => {
+                  let maxSim = 0;
+                  docWords.forEach(dw => {
+                    const sim = getWordSimilarity(sw, dw, enableFuzzy);
+                    if (sim > maxSim) maxSim = sim;
+                  });
+                  const wWeight = getCombinedWordWeight(sw, enableWordWeighting, idfMap);
+                  matchedOrig += maxSim * wWeight;
+                });
+
+                let matchedExp = 0;
+                expSearchWords.forEach(sw => {
+                  let maxSim = 0;
+                  expDocWords.forEach(dw => {
+                    const sim = getWordSimilarity(sw, dw, enableFuzzy);
+                    if (sim > maxSim) maxSim = sim;
+                  });
+                  const wWeight = getCombinedWordWeight(sw, enableWordWeighting, idfMap);
+                  matchedExp += maxSim * wWeight;
+                });
+
+                currentMatchCount = Math.max(matchedOrig, matchedExp);
+              }
             } else {
-              // Contiguous sequence score requiring match to start from first words of DH Segment 1
-              const calcDHSequenceScore = (dhWords: string[], targetWords: string[]): number => {
-                if (!dhWords || dhWords.length === 0 || !targetWords || targetWords.length === 0) return 0;
-
+              // No explicit delimiter: find longest contiguous sequence of matching words starting from start of commentary line
+              const calcContiguousScore = (sourceWords: string[], targetWords: string[]): number => {
                 let maxSeqScore = 0;
-                const firstWord = dhWords[0];
-
-                for (let docWIdx = 0; docWIdx < targetWords.length; docWIdx++) {
-                  const sim0 = getWordSimilarity(firstWord, targetWords[docWIdx], enableFuzzy);
-                  if (sim0 >= 0.75) {
+                for (let startWIdx = 0; startWIdx < sourceWords.length; startWIdx++) {
+                  for (let docWIdx = 0; docWIdx < targetWords.length; docWIdx++) {
                     let k = 0;
                     let seqScore = 0;
-                    while (k < dhWords.length && (docWIdx + k) < targetWords.length) {
-                      const w1 = dhWords[k];
+                    while (
+                      startWIdx + k < sourceWords.length &&
+                      docWIdx + k < targetWords.length
+                    ) {
+                      const w1 = sourceWords[startWIdx + k];
                       const w2 = targetWords[docWIdx + k];
                       const sim = getWordSimilarity(w1, w2, enableFuzzy);
-                      if (sim < 0.65) break;
+                      if (sim <= 0) break;
                       const wWeight = getCombinedWordWeight(w1, enableWordWeighting, idfMap);
                       seqScore += sim * wWeight;
                       k++;
@@ -482,46 +596,30 @@ export function runLinkingParser(
                 return maxSeqScore;
               };
 
-              const dhWordsToUse = coreSearchWords.length > 0 ? coreSearchWords : searchWords;
-              const expDhWordsToUse = expCoreSearchWords.length > 0 ? expCoreSearchWords : expFullWords;
+            const origScore = calcContiguousScore(fullWords, docWords);
+            const expScore = calcContiguousScore(expFullWords, expDocWords);
+            let rawMatchCount = Math.max(origScore, expScore);
 
-              const origScore = calcDHSequenceScore(dhWordsToUse, docWords);
-              const expScore = calcDHSequenceScore(expDhWordsToUse, expDocWords);
-              let rawMatchCount = Math.max(origScore, expScore);
-
-              // Apply Sequential Monotonicity Penalty if prevLineNum is available
-              let distPenalty = 1.0;
-              if (prevLineNum !== null && prevLineNum !== undefined && prevLineNum > 0) {
-                const diff = lNum - prevLineNum;
-                if (diff < 0) {
-                  distPenalty = Math.max(0.93, 1.0 - Math.abs(diff) * 0.005);
-                } else if (diff > 5) {
-                  distPenalty = Math.max(0.95, 1.0 - (diff - 5) * 0.002);
-                }
-              }
-
-              currentMatchCount = rawMatchCount * distPenalty;
-            }
-
-            const minThreshold = isExplicit 
-              ? Math.min(1.5, Math.max(0.7, expectedWeight * 0.65))
-              : Math.min(1.5, Math.max(0.7, expectedWeight * 0.65));
-
-            // Multi-segment verification: if Anchor Segment 1 matched on lNum, check if subsequent segments appear nearby
-            if (subSegments && subSegments.length > 0 && currentMatchCount >= minThreshold) {
-              let verifiedCount = 0;
-              const maxCheckLine = Math.min(lNum + 3, docLines.length);
-              const windowText = docLines.slice(lNum - 1, maxCheckLine).map(l => normalizeText(l)).join(' ');
-              for (const sub of subSegments) {
-                const normSub = normalizeText(sub);
-                if (normSub && normSub.length > 2 && windowText.includes(normSub)) {
-                  verifiedCount++;
-                }
-              }
-              if (verifiedCount > 0) {
-                currentMatchCount += (verifiedCount * 2.0); // Confidence boost
+            // Apply Sequential Monotonicity Penalty if prevLineNum is available
+            // Note: Very subtle bias (max 5% - 7%) so that out-of-order commentaries are not penalized
+            let distPenalty = 1.0;
+            if (prevLineNum !== null && prevLineNum !== undefined && prevLineNum > 0) {
+              const diff = lNum - prevLineNum;
+              if (diff < 0) {
+                // Gentle micro-preference for current/subsequent lines over backward jumps (max 7% drop)
+                distPenalty = Math.max(0.93, 1.0 - Math.abs(diff) * 0.005);
+              } else if (diff > 5) {
+                // Gentle micro-preference for closer lines over far forward jumps (max 5% drop)
+                distPenalty = Math.max(0.95, 1.0 - (diff - 5) * 0.002);
               }
             }
+
+            currentMatchCount = rawMatchCount * distPenalty;
+          }
+
+          const minThreshold = isExplicit 
+            ? Math.min(1.5, Math.max(0.7, expectedWeight * 0.65))
+            : Math.min(1.5, Math.max(0.7, expectedWeight * 0.65));
 
             if (currentMatchCount >= minThreshold) {
               const dist = Math.abs(lNum - range.s);
@@ -559,8 +657,7 @@ export function runLinkingParser(
           lineForDhExtraction,
           isExplicitDelimiter,
           rashiIdfMap,
-          previousLink ? previousLink.line_index_2 : null,
-          []
+          previousLink ? previousLink.line_index_2 : null
         );
         console.log(`  → Rashi search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
         matchedSecondaryLineNum = secMatchRes.lineNum;
@@ -574,8 +671,7 @@ export function runLinkingParser(
           lineForDhExtraction,
           isExplicitDelimiter,
           tosafotIdfMap,
-          previousLink ? previousLink.line_index_2 : null,
-          []
+          previousLink ? previousLink.line_index_2 : null
         );
         console.log(`  → Tosafot search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
         matchedSecondaryLineNum = secMatchRes.lineNum;
@@ -584,17 +680,29 @@ export function runLinkingParser(
       // Search in primary source segment unless the line explicitly targets a secondary source or is 'בא"ד' (which means inherit previous).
       if (!explicitSecondaryTarget && !shouldInheritLine) {
         console.log(`🔍 Searching PRIMARY source: lineForDhExtraction='${lineForDhExtraction}', cleanDh='${cleanDh}', isExplicit=${isExplicitDelimiter}`);
-        srcMatchRes = searchLineInDoc(
-          srcDoc.lines,
-          srcSeg ? srcSeg.startLine : 1,
-          srcSeg ? srcSeg.endLine : srcDoc.lines.length,
-          cleanDh,
-          lineForDhExtraction,
-          isExplicitDelimiter,
-          srcIdfMap,
-          lastMatchedSrcLineIndex || (previousLink ? previousLink.line_index_2 : null),
-          subsequentSegments
-        );
+        const hasKoo = /\bו?כו'/i.test(lineForDhExtraction) || /\bו?כו'/i.test(trimmedLine);
+        if (hasKoo) {
+          console.log(`  🎯 Applying First Anchor Priority for primary source with כו' / וכו'`);
+          srcMatchRes = searchPrimaryWithFirstAnchor(
+            srcDoc.lines,
+            srcSeg ? srcSeg.startLine : 1,
+            srcSeg ? srcSeg.endLine : srcDoc.lines.length,
+            lineForDhExtraction,
+            srcIdfMap,
+            lastMatchedSrcLineIndex || (previousLink ? previousLink.line_index_2 : null)
+          );
+        } else {
+          srcMatchRes = searchLineInDoc(
+            srcDoc.lines,
+            srcSeg ? srcSeg.startLine : 1,
+            srcSeg ? srcSeg.endLine : srcDoc.lines.length,
+            cleanDh,
+            lineForDhExtraction,
+            isExplicitDelimiter,
+            srcIdfMap,
+            lastMatchedSrcLineIndex || (previousLink ? previousLink.line_index_2 : null)
+          );
+        }
         console.log(`  → PRIMARY source result: lineNum=${srcMatchRes.lineNum}, matchedCount=${srcMatchRes.matchedCount}`);
         matchedSourceLineNum = srcMatchRes.lineNum;
       }
