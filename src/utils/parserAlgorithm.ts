@@ -360,6 +360,25 @@ export function runLinkingParser(
       const isBaadRegex = /^(?:שם\s+)?(?:או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד)(?:\s|$|[:.\-])/i;
       const isBaad = Boolean(normalizedPrefixLine.match(isBaadRegex));
       const isJustSham = trimmedLine.startsWith('שם') && !normalizedPrefixLine.match(/^שם\s+(?:ד"ה|דה)/i);
+
+      let isInherited = false;
+      const shouldInheritLine = (isBaad || isJustSham) && previousLink !== null;
+
+      let lineForDh = trimmedLine;
+      if (targetSecondary === 'rashi') {
+        const rashiPrefixRegex = /^(?:ברש"י|ברשי|רש"י|רשי|ופרש"י|ופרשי|ופירש"י|ופירשי)(?:\s+(?:בד"ה|בדה|ד"ה|דה))?(?:\s+|$|[:.\-])/i;
+        lineForDh = lineForDh.replace(rashiPrefixRegex, '').trim();
+      } else if (targetSecondary === 'tosafot') {
+        const tosafotPrefixRegex = /^(?:בתוס'|בתוס|תוס'|תוס|בתוספות|תוספות)(?:\s+(?:בד"ה|בדה|ד"ה|דה))?(?:\s+|$|[:.\-])/i;
+        lineForDh = lineForDh.replace(tosafotPrefixRegex, '').trim();
+      }
+
+      const genericPrefixRegex = /^(?:שם\s+)?(?:או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד|בד"ה|בדה|ד"ה|דה|גמרא|גמ'|משנה|מש')(?:\s+|$|[:.\-])/i;
+      lineForDh = lineForDh.replace(genericPrefixRegex, '').trim();
+      if (lineForDh.startsWith('שם')) {
+        lineForDh = lineForDh.replace(/^שם\s*/i, '').trim();
+      }
+
       const lineForDhExtraction = lineForDh.trim() ? lineForDh : trimmedLine;
       console.log(`  🔎 lineForDhExtraction='${lineForDhExtraction}'`);
       const { dhText, cleanDh, subsequentSegments, isExplicitDelimiter } = extractDiburHamatchil(lineForDhExtraction, config.diburHamatchilDelimiter);
@@ -455,24 +474,27 @@ export function runLinkingParser(
                 if (!dhWords || dhWords.length === 0 || !targetWords || targetWords.length === 0) return 0;
 
                 let maxSeqScore = 0;
-                const firstWord = dhWords[0];
+                const maxStartDhIdx = Math.min(1, dhWords.length - 1);
 
-                for (let docWIdx = 0; docWIdx < targetWords.length; docWIdx++) {
-                  const sim0 = getWordSimilarity(firstWord, targetWords[docWIdx], enableFuzzy);
-                  if (sim0 >= 0.75) {
-                    let k = 0;
-                    let seqScore = 0;
-                    while (k < dhWords.length && (docWIdx + k) < targetWords.length) {
-                      const w1 = dhWords[k];
-                      const w2 = targetWords[docWIdx + k];
-                      const sim = getWordSimilarity(w1, w2, enableFuzzy);
-                      if (sim < 0.65) break;
-                      const wWeight = getCombinedWordWeight(w1, enableWordWeighting, idfMap);
-                      seqScore += sim * wWeight;
-                      k++;
-                    }
-                    if (seqScore > maxSeqScore) {
-                      maxSeqScore = seqScore;
+                for (let startDh = 0; startDh <= maxStartDhIdx; startDh++) {
+                  const startWord = dhWords[startDh];
+                  for (let docWIdx = 0; docWIdx < targetWords.length; docWIdx++) {
+                    const sim0 = getWordSimilarity(startWord, targetWords[docWIdx], enableFuzzy);
+                    if (sim0 >= 0.65) {
+                      let k = 0;
+                      let seqScore = 0;
+                      while ((startDh + k) < dhWords.length && (docWIdx + k) < targetWords.length) {
+                        const w1 = dhWords[startDh + k];
+                        const w2 = targetWords[docWIdx + k];
+                        const sim = getWordSimilarity(w1, w2, enableFuzzy);
+                        if (sim < 0.6) break;
+                        const wWeight = getCombinedWordWeight(w1, enableWordWeighting, idfMap);
+                        seqScore += sim * wWeight;
+                        k++;
+                      }
+                      if (seqScore > maxSeqScore) {
+                        maxSeqScore = seqScore;
+                      }
                     }
                   }
                 }
@@ -485,6 +507,20 @@ export function runLinkingParser(
               const origScore = calcDHSequenceScore(dhWordsToUse, docWords);
               const expScore = calcDHSequenceScore(expDhWordsToUse, expDocWords);
               let rawMatchCount = Math.max(origScore, expScore);
+
+              if (isExplicit) {
+                let matchedWordScore = 0;
+                dhWordsToUse.forEach(sw => {
+                  let maxSim = 0;
+                  docWords.forEach(dw => {
+                    const sim = getWordSimilarity(sw, dw, enableFuzzy);
+                    if (sim > maxSim) maxSim = sim;
+                  });
+                  const wWeight = getCombinedWordWeight(sw, enableWordWeighting, idfMap);
+                  matchedWordScore += maxSim * wWeight;
+                });
+                rawMatchCount = Math.max(rawMatchCount, matchedWordScore);
+              }
 
               // Apply Sequential Monotonicity Penalty if prevLineNum is available
               let distPenalty = 1.0;
