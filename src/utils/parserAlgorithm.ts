@@ -91,7 +91,7 @@ export function normalizeHebrewQuotes(text: string): string {
 export function stripSecondaryPrefix(line: string): string {
   if (!line) return '';
   let cleaned = normalizeHebrewQuotes(line.trim());
-  cleaned = cleaned.replace(/^(ברש"י\s+ד"ה|רש"י\s+ד"ה|רשד"ה|רשדה|ברשד"ה|ברשדה|ברש"י\s+בד"ה|רש"י\s+בד"ה|ברש"י|רש"י|רשי\s+ד"ה|רשי\s+דה|רשי|ברשי\s+ד"ה|ברשי\s+דה|ברשי|בתוספות\s+ד"ה|תוספות\s+ד"ה|בתוס'\s+ד"ה|תוס'\s+ד"ה|בתוס\s+ד"ה|תוס\s+ד"ה|בתוסות\s+ד"ה|תוסות\s+ד"ה|בתוד"ה|תוד"ה|בתוסות\s+בד"ה|תוספות\s+בד"ה|בתוס'\s+בד"ה|תוס'\s+בד"ה|בתוס\s+בד"ה|תוס\s+בד"ה|בתוס|תוס|בתוסות|תוסות|בתוספות|תוספות|בתוס'|תוס'|בתו'\s+ד"ה|תו'\s+ד"ה|תו'\s+בד"ה|תו\s+ד"ה|תו\s+בד"ה|שם\s+ד"ה|או"ד|באו"ד|א"ד|בא"ד)\s*[:.\-]?\s*/i, '');
+  cleaned = cleaned.replace(/^(ברש"י\s+ד"ה|רש"י\s+ד"ה|רשד"ה|רשדה|ברשד"ה|ברשדה|ברש"י\s+בד"ה|רש"י\s+בד"ה|ברש"י|רש"י|רשי\s+ד"ה|רשי\s+דה|רשי|ברשי\s+ד"ה|ברשי\s+דה|ברשי|בתוספות\s+ד"ה|תוספות\s+ד"ה|בתוס'\s+ד"ה|תוס'\s+ד"ה|בתוס\s+ד"ה|תוס\s+ד"ה|בתוסות\s+ד"ה|תוסות\s+ד"ה|בתוד"ה|תוד"ה|בתוסות\s+בד"ה|תוספות\s+בד"ה|בתוס'\s+בד"ה|תוס'\s+בד"ה|בתוס\s+בד"ה|תוס\s+בד"ה|בתוס|תוס|בתוסות|תוסות|בתוספות|תוספות|בתוס'|תוס'|בתו'\s+ד"ה|תו'\s+ד"ה|תו'\s+בד"ה|תו\s+ד"ה|תו\s+בד"ה|שם\s+ד"ה|או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד|בד"ה|בדה)\s*[:.\-]?\s*/i, '');
   cleaned = cleaned.replace(/^ד"ה\s*[:.\-]?\s*/i, '');
   return cleaned.trim();
 }
@@ -249,12 +249,16 @@ export function runLinkingParser(
         targetSecondary = 'tosafot';
         explicitSecondaryTarget = true;
         console.log(`  ✅ Detected Tosafot keyword. normalizedPrefixLine='${normalizedPrefixLine}'`);
-      } else if (normalizedPrefixLine.match(/^(שם\s+ד"ה|או"ד|באו"ד|א"ד|בא"ד)/i)) {
-        targetSecondary = previousSecondaryType;
-        if (targetSecondary) explicitSecondaryTarget = true;
+      } else {
+        const baadRegex = /^(?:שם\s+)?(?:או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד|בד"ה|בדה)(?:\s|$|[:.\-])/i;
+        if (normalizedPrefixLine.match(baadRegex)) {
+          targetSecondary = previousSecondaryType;
+          if (targetSecondary) explicitSecondaryTarget = true;
+        }
       }
 
-      const isBaad = Boolean(normalizedPrefixLine.match(/^(או"ד|באו"ד|א"ד|בא"ד)/i));
+      const baadRegexAll = /^(?:שם\s+)?(?:או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד|בד"ה|בדה)(?:\s|$|[:.\-])/i;
+      const isBaad = Boolean(normalizedPrefixLine.match(baadRegexAll));
 
       // Handle Inheritance ("שם" - Step 5)
       const startsWithSham = trimmedLine.startsWith('שם') || isBaad;
@@ -464,6 +468,8 @@ export function runLinkingParser(
       // Only inherit when this is not an explicit secondary citation.
       if (!matchedSourceLineNum && !explicitSecondaryTarget && previousLink && previousLink.line_index_2) {
         matchedSourceLineNum = previousLink.line_index_2;
+        matchedSecondaryLineNum = previousLink.secondary_line_index || null;
+        targetSecondary = previousLink.secondaryTarget || null;
         isInherited = true;
       }
 
@@ -471,7 +477,12 @@ export function runLinkingParser(
       if (matchedSourceLineNum) {
         lastMatchedSrcLineIndex = matchedSourceLineNum;
         
-        const isSecondaryLink = Boolean(targetSecondary && matchedSecondaryLineNum);
+        // Fallback for older UI-created links or incomplete inheritance
+        if (targetSecondary && !matchedSecondaryLineNum) {
+           matchedSecondaryLineNum = matchedSourceLineNum;
+        }
+
+        const isSecondaryLink = Boolean(targetSecondary);
         if (isSecondaryLink) {
           console.log(`🔗 Line ${cLineIdx}: Creating SECONDARY link: targetSecondary=${targetSecondary}, matchedSecondaryLineNum=${matchedSecondaryLineNum}, matchedSourceLineNum=${matchedSourceLineNum}`);
         }

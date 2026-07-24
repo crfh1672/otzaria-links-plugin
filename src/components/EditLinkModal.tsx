@@ -27,7 +27,8 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
   );
 
   const handleApply = () => {
-    if (targetLine < 1 || targetLine > sourceLinesCount) return;
+    if (targetLine < 1) return;
+    if (secondary === 'none' && targetLine > sourceLinesCount) return;
     onSave(
       commLineIndex,
       targetLine,

@@ -190,17 +190,35 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
     // Filter out old link for this commentary line if exists
     updatedLinks = updatedLinks.filter(l => l.line_index_1 !== commLineIdx1);
 
-    if (newSourceLineIdx && newSourceLineIdx >= 1 && newSourceLineIdx <= sourceLines.length) {
+    if (newSourceLineIdx && newSourceLineIdx >= 1) {
+      // If it's a primary link, check bounds against sourceLines
+      if (!secondaryTarget && newSourceLineIdx > sourceLines.length) return;
+
       const headerTitle = config.targetBookName;
+      const isSecondary = Boolean(secondaryTarget);
+      
+      const getSecondaryPath = (sec: 'rashi' | 'tosafot', title: string) => 
+        sec === 'rashi' ? `רש"י על ${title}.txt` : `תוספות על ${title}.txt`;
+      const getSecondaryBookLabel = (sec: 'rashi' | 'tosafot') => 
+        sec === 'rashi' ? 'רש"י' : 'תוספות';
+
+      const path_2 = isSecondary 
+        ? getSecondaryPath(secondaryTarget!, config.targetBookName)
+        : `${config.targetBookName}.txt`;
+        
+      const heRef_2 = isSecondary
+        ? `${getSecondaryBookLabel(secondaryTarget!)} - ${headerTitle}`
+        : `${headerTitle} - שורה ${newSourceLineIdx}`;
+
       const newLink: OtzariaLink = {
         line_index_1: commLineIdx1,
         line_index_2: newSourceLineIdx,
-        heRef_2: `${headerTitle}, שורה ${newSourceLineIdx}`,
-        path_2: `${config.targetBookName}.txt`,
+        heRef_2: heRef_2,
+        path_2: path_2,
         connection_type: "commentary",
-        secondaryTarget,
-        secondary_line_index: secondaryTarget ? 1 : undefined,
-        secondaryRef: secondaryTarget ? `${secondaryTarget === 'rashi' ? 'רש"י' : 'תוספות'}` : undefined,
+        secondaryTarget: secondaryTarget,
+        secondary_line_index: isSecondary ? newSourceLineIdx : undefined,
+        secondaryRef: isSecondary ? `${getSecondaryBookLabel(secondaryTarget!)} (${headerTitle})` : undefined,
         isInherited: false
       };
       updatedLinks.push(newLink);
