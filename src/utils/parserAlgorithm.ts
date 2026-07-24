@@ -91,7 +91,7 @@ export function normalizeHebrewQuotes(text: string): string {
 export function stripSecondaryPrefix(line: string): string {
   if (!line) return '';
   let cleaned = normalizeHebrewQuotes(line.trim());
-  cleaned = cleaned.replace(/^(ברש"י\s+ד"ה|רש"י\s+ד"ה|רשד"ה|רשדה|ברשד"ה|ברשדה|ברש"י\s+בד"ה|רש"י\s+בד"ה|ברש"י|רש"י|רשי\s+ד"ה|רשי\s+דה|רשי|ברשי\s+ד"ה|ברשי\s+דה|ברשי|בתוספות\s+ד"ה|תוספות\s+ד"ה|בתוס'\s+ד"ה|תוס'\s+ד"ה|בתוס\s+ד"ה|תוס\s+ד"ה|בתוסות\s+ד"ה|תוסות\s+ד"ה|בתוד"ה|תוד"ה|בתוסות\s+בד"ה|תוספות\s+בד"ה|בתוס'\s+בד"ה|תוס'\s+בד"ה|בתוס\s+בד"ה|תוס\s+בד"ה|בתוס|תוס|בתוסות|תוסות|בתוספות|תוספות|בתוס'|תוס'|בתו'\s+ד"ה|תו'\s+ד"ה|תו'\s+בד"ה|תו\s+ד"ה|תו\s+בד"ה|שם\s+ד"ה|או"ד|באו"ד)\s*[:.\-]?\s*/i, '');
+  cleaned = cleaned.replace(/^(ברש"י\s+ד"ה|רש"י\s+ד"ה|רשד"ה|רשדה|ברשד"ה|ברשדה|ברש"י\s+בד"ה|רש"י\s+בד"ה|ברש"י|רש"י|רשי\s+ד"ה|רשי\s+דה|רשי|ברשי\s+ד"ה|ברשי\s+דה|ברשי|בתוספות\s+ד"ה|תוספות\s+ד"ה|בתוס'\s+ד"ה|תוס'\s+ד"ה|בתוס\s+ד"ה|תוס\s+ד"ה|בתוסות\s+ד"ה|תוסות\s+ד"ה|בתוד"ה|תוד"ה|בתוסות\s+בד"ה|תוספות\s+בד"ה|בתוס'\s+בד"ה|תוס'\s+בד"ה|בתוס\s+בד"ה|תוס\s+בד"ה|בתוס|תוס|בתוסות|תוסות|בתוספות|תוספות|בתוס'|תוס'|בתו'\s+ד"ה|תו'\s+ד"ה|תו'\s+בד"ה|תו\s+ד"ה|תו\s+בד"ה|שם\s+ד"ה|או"ד|באו"ד|א"ד|בא"ד)\s*[:.\-]?\s*/i, '');
   cleaned = cleaned.replace(/^ד"ה\s*[:.\-]?\s*/i, '');
   return cleaned.trim();
 }
@@ -249,12 +249,15 @@ export function runLinkingParser(
         targetSecondary = 'tosafot';
         explicitSecondaryTarget = true;
         console.log(`  ✅ Detected Tosafot keyword. normalizedPrefixLine='${normalizedPrefixLine}'`);
-      } else if (normalizedPrefixLine.match(/^(שם\s+ד"ה|או"ד|באו"ד)/i)) {
+      } else if (normalizedPrefixLine.match(/^(שם\s+ד"ה|או"ד|באו"ד|א"ד|בא"ד)/i)) {
         targetSecondary = previousSecondaryType;
+        if (targetSecondary) explicitSecondaryTarget = true;
       }
 
+      const isBaad = Boolean(normalizedPrefixLine.match(/^(או"ד|באו"ד|א"ד|בא"ד)/i));
+
       // Handle Inheritance ("שם" - Step 5)
-      const startsWithSham = trimmedLine.startsWith('שם');
+      const startsWithSham = trimmedLine.startsWith('שם') || isBaad;
       let isInherited = false;
 
       // Extract DH search text using stripped line if secondary prefix present
@@ -377,8 +380,8 @@ export function runLinkingParser(
       let srcMatchRes = { lineNum: null as number | null, matchedCount: 0 };
       let secMatchRes = { lineNum: null as number | null, matchedCount: 0 };
 
-      // Search in secondary source if routed
-      if (targetSecondary === 'rashi' && rashiDoc) {
+      // Search in secondary source if routed (unless it's 'בא"ד', in which case we don't search, we inherit)
+      if (!isBaad && targetSecondary === 'rashi' && rashiDoc) {
         console.log(`🔍 Searching for Rashi: keyword='${normalizedPrefixLine}', cleanDh='${cleanDh}', lineForDhExtraction='${lineForDhExtraction}'`);
         secMatchRes = searchLineInDoc(
           rashiDoc.lines,
@@ -390,7 +393,7 @@ export function runLinkingParser(
         );
         console.log(`  → Rashi search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
         matchedSecondaryLineNum = secMatchRes.lineNum;
-      } else if (targetSecondary === 'tosafot' && tosafotDoc) {
+      } else if (!isBaad && targetSecondary === 'tosafot' && tosafotDoc) {
         console.log(`🔍 Searching for Tosafot: keyword='${normalizedPrefixLine}', cleanDh='${cleanDh}', lineForDhExtraction='${lineForDhExtraction}'`);
         secMatchRes = searchLineInDoc(
           tosafotDoc.lines,
@@ -404,8 +407,8 @@ export function runLinkingParser(
         matchedSecondaryLineNum = secMatchRes.lineNum;
       }
 
-      // Search in primary source segment unless the line explicitly targets a secondary source.
-      if (!explicitSecondaryTarget) {
+      // Search in primary source segment unless the line explicitly targets a secondary source or is 'בא"ד' (which means inherit previous).
+      if (!explicitSecondaryTarget && !isBaad) {
         console.log(`🔍 Searching PRIMARY source: lineForDhExtraction='${lineForDhExtraction}', cleanDh='${cleanDh}', isExplicit=${isExplicitDelimiter}`);
         srcMatchRes = searchLineInDoc(
           srcDoc.lines,
