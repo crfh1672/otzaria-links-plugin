@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BookNode, PluginConfig, TANAKH_BOOKS, SHAS_TRACTATES } from '../types';
-import { fetchLibraryTree, fetchBookContent, notifyError } from '../utils/otzariaBridge';
+import { fetchLibraryTree, fetchBookContent, fetchBookLinks, notifyError } from '../utils/otzariaBridge';
 import {
   Search,
   Upload,
@@ -23,7 +23,9 @@ interface SetupModeProps {
     config: PluginConfig,
     sourceText: string,
     rashiText?: string,
-    tosafotText?: string
+    tosafotText?: string,
+    rashiLinks?: any[],
+    tosafotLinks?: any[]
   ) => void;
 }
 
@@ -62,6 +64,45 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
       }
     }
   }, [category]);
+
+  const getSecondaryBookVariants = (targetBook: string, source: 'rashi' | 'tosafot') => {
+    const base = targetBook.replace(/^מסכת\s+/i, '').trim();
+    if (source === 'rashi') {
+      return [
+        `רש"י על ${targetBook}`,
+        `רש"י על ${base}`,
+        `רש"י ${targetBook}`,
+        `רש"י ${base}`,
+        `רש"י על מסכת ${base}`,
+        `רש"י על ספר ${base}`
+      ];
+    }
+    return [
+      `תוספות על ${targetBook}`,
+      `תוספות על ${base}`,
+      `תוס' על ${targetBook}`,
+      `תוס' על ${base}`,
+      `תוס על ${targetBook}`,
+      `תוס על ${base}`,
+      `תוסות על ${targetBook}`,
+      `תוסות על ${base}`,
+      `תוספות על מסכת ${base}`,
+      `תוס' על מסכת ${base}`
+    ];
+  };
+
+  const tryFetchSecondarySource = async (
+    variants: string[]
+  ): Promise<{ text?: string; links: any[] }> => {
+    for (const candidate of variants) {
+      const raw = await fetchBookContent(candidate);
+      if (raw && !raw.includes('לא נמצא תוכן עבור ספר זה')) {
+        const candidateLinks = await fetchBookLinks(candidate);
+        return { text: raw, links: candidateLinks || [] };
+      }
+    }
+    return { links: [] };
+  };
 
   // Load Library Tree on mount
   useEffect(() => {
@@ -122,21 +163,27 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
 
       let rashiText: string | undefined = undefined;
       let tosafotText: string | undefined = undefined;
+      let rashiLinks: any[] = [];
+      let tosafotLinks: any[] = [];
 
       // Fetch secondary source files (Rashi and Tosafot for target book if available)
       try {
-        const rawRashi = await fetchBookContent(`רש"י על ${targetBook}`);
-        if (rawRashi && !rawRashi.includes('לא נמצא תוכן עבור ספר זה')) {
-          rashiText = rawRashi;
+        const rashiVariants = getSecondaryBookVariants(targetBook, 'rashi');
+        const rashiResult = await tryFetchSecondarySource(rashiVariants);
+        if (rashiResult.text) {
+          rashiText = rashiResult.text;
+          rashiLinks = rashiResult.links;
         }
       } catch {
         rashiText = undefined;
       }
 
       try {
-        const rawTosafot = await fetchBookContent(`תוספות על ${targetBook}`);
-        if (rawTosafot && !rawTosafot.includes('לא נמצא תוכן עבור ספר זה')) {
-          tosafotText = rawTosafot;
+        const tosafotVariants = getSecondaryBookVariants(targetBook, 'tosafot');
+        const tosafotResult = await tryFetchSecondarySource(tosafotVariants);
+        if (tosafotResult.text) {
+          tosafotText = tosafotResult.text;
+          tosafotLinks = tosafotResult.links;
         }
       } catch {
         tosafotText = undefined;
@@ -155,7 +202,9 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
         config,
         sourceText,
         rashiText,
-        tosafotText
+        tosafotText,
+        rashiLinks,
+        tosafotLinks
       );
     } catch (err) {
       console.error(err);
@@ -195,9 +244,9 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
               <ChevronRight className="w-4 h-4 text-[var(--color-on-surface-variant)] shrink-0" />
             )}
             {isExpanded ? (
-              <FolderOpen className="w-4.5 h-4.5 text-[#D99B56] shrink-0" />
+              <FolderOpen className="w-4.5 h-4.5 text-current shrink-0" />
             ) : (
-              <Folder className="w-4.5 h-4.5 text-[#D99B56] shrink-0" />
+              <Folder className="w-4.5 h-4.5 text-current shrink-0" />
             )}
             <span className="truncate">{node.title}</span>
           </button>
@@ -250,7 +299,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
 
             <div className="flex items-center gap-2">
               <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-secondary-subtle)] hover:bg-[var(--color-outline-variant)] text-[var(--color-on-surface)] rounded-lg transition-colors border border-[var(--color-outline)]">
-                <Upload className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                <Upload className="w-3.5 h-3.5 text-current" />
                 <span>ייבוא TXT חיצוני</span>
                 <input
                   type="file"
@@ -282,7 +331,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
               <div className="space-y-3">
                 <div className="flex items-center justify-between bg-[var(--color-primary-subtle)] p-3 rounded-xl border border-[var(--color-outline)]">
                   <div className="flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-[var(--color-primary)]" />
+                    <FileText className="w-5 h-5 text-[var(--color-on-surface)]" />
                     <div>
                       <h4 className="text-sm font-bold text-[var(--color-on-surface)]">
                         {selectedBookTitle}
@@ -292,7 +341,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
                       </p>
                     </div>
                   </div>
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  <CheckCircle2 className="w-5 h-5 text-[var(--color-on-surface)]" />
                 </div>
 
                 <div className="bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-outline)] text-xs font-serif leading-relaxed text-[var(--color-on-surface)] max-h-[460px] overflow-y-auto whitespace-pre-wrap">
@@ -323,7 +372,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
         {/* Left Pane: Configuration & Settings (5 Cols) */}
         <div className="lg:col-span-5 bg-[var(--color-surface)] text-[var(--color-on-surface)] rounded-2xl shadow-xs border border-[var(--color-outline-variant)] flex flex-col h-[620px] overflow-hidden">
           <div className="p-3.5 bg-[var(--color-surface-container-high)] border-b border-[var(--color-outline)] flex items-center gap-2">
-            <Settings2 className="w-4 h-4 text-[var(--color-primary)]" />
+            <Settings2 className="w-4 h-4 text-[var(--color-on-surface)]" />
             <h3 className="text-sm font-bold text-[var(--color-on-surface)]">
               אפיון והגדרות מיפוי
             </h3>
@@ -454,7 +503,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
                 <span>מעבד מיפוי...</span>
               ) : (
                 <>
-                  <Play className="w-4 h-4 fill-current" />
+                  <Play className="w-4 h-4 text-current" />
                   <span>הפעל אלגוריתם מיפוי</span>
                 </>
               )}

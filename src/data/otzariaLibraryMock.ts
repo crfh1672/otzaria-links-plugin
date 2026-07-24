@@ -55,6 +55,23 @@ export const MOCK_LIBRARY_TREE: BookNode = {
   ]
 };
 
+export const MOCK_BOOK_LINKS: Record<string, any[]> = {
+  "רש\"י על ברכות": [
+    { line_index_1: 2, line_index_2: 2 },
+    { line_index_1: 3, line_index_2: 2 },
+    { line_index_1: 4, line_index_2: 2 },
+    { line_index_1: 5, line_index_2: 3 },
+    { line_index_1: 7, line_index_2: 7 },
+    { line_index_1: 8, line_index_2: 8 }
+  ],
+  "תוספות על ברכות": [
+    { line_index_1: 2, line_index_2: 2 },
+    { line_index_1: 3, line_index_2: 2 },
+    { line_index_1: 5, line_index_2: 7 },
+    { line_index_1: 6, line_index_2: 10 }
+  ]
+};
+
 export const MOCK_BOOK_CONTENTS: Record<string, string> = {
   "בראשית": `<h1>בראשית פרק א</h1>
 א בְּרֵאשִׁית בָּרָא אֱלֹהִים אֵת הַשָּׁמַײִם וְאֵת הָאָרֶץ:

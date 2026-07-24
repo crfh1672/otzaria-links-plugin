@@ -53,8 +53,8 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({ onLoadSession, onC
       <div className="bg-[var(--color-surface)] text-[var(--color-on-surface)] rounded-2xl border border-[var(--color-outline-variant)] shadow-xl max-w-lg w-full overflow-hidden text-right flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="p-4 bg-[var(--color-surface-container-high)] border-b border-[var(--color-outline)] flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 text-[var(--color-primary)] font-bold text-sm">
-            <FolderOpen className="w-4.5 h-4.5" />
+          <div className="flex items-center gap-2 text-[var(--color-on-surface)] font-bold text-sm">
+            <FolderOpen className="w-4.5 h-4.5 text-current" />
             <span>פרויקטים ומטמון שמור באוצריא</span>
           </div>
           <button
@@ -81,7 +81,7 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({ onLoadSession, onC
               >
                 <div className="space-y-1 min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
+                    <FileText className="w-4 h-4 text-current shrink-0" />
                     <h4 className="text-xs font-bold text-[var(--color-on-surface)] truncate">
                       {s.commentaryTitle}
                     </h4>

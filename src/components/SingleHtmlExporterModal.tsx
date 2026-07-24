@@ -106,8 +106,8 @@ ${document.documentElement.innerHTML}
       <div className="bg-[var(--color-surface)] text-[var(--color-on-surface)] rounded-2xl border border-[var(--color-outline-variant)] shadow-xl max-w-lg w-full overflow-hidden text-right">
         {/* Header */}
         <div className="p-4 bg-[var(--color-surface-container-high)] border-b border-[var(--color-outline)] flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[var(--color-primary)] font-bold text-sm">
-            <Code className="w-4.5 h-4.5" />
+          <div className="flex items-center gap-2 text-[var(--color-on-surface)] font-bold text-sm">
+            <Code className="w-4.5 h-4.5 text-current" />
             <span>קימפול וייצוא התוסף עבור אוצריא ו-GitHub</span>
           </div>
           <button
@@ -121,8 +121,8 @@ ${document.documentElement.innerHTML}
         {/* Content */}
         <div className="p-5 space-y-4 text-xs text-[var(--color-on-surface)] bg-[var(--color-surface-container-low)]">
           <div className="bg-[var(--color-primary-subtle)] border border-[var(--color-outline)] p-3.5 rounded-xl space-y-1.5">
-            <h4 className="font-bold text-[var(--color-primary)] flex items-center gap-1.5">
-              <Github className="w-4 h-4" />
+            <h4 className="font-bold text-[var(--color-on-surface)] flex items-center gap-1.5">
+              <Github className="w-4 h-4 text-current" />
               <span>תאימות מלאה להוראות SDK תוספי אוצריא</span>
             </h4>
             <p className="text-[var(--color-on-surface-variant)] leading-relaxed">
@@ -134,7 +134,7 @@ ${document.documentElement.innerHTML}
             <div className="p-3.5 bg-[var(--color-surface)] rounded-xl border border-[var(--color-outline-variant)] flex items-center justify-between gap-3 shadow-2xs">
               <div>
                 <h5 className="font-bold text-[var(--color-on-surface)] flex items-center gap-1.5">
-                  <FileCode className="w-4 h-4 text-[var(--color-primary)]" />
+                  <FileCode className="w-4 h-4 text-current" />
                   <span>קובץ .otzplugin עבור התקנה באוצריא</span>
                 </h5>
                 <p className="text-[11px] text-[var(--color-on-surface-variant)] mt-0.5">
@@ -154,7 +154,7 @@ ${document.documentElement.innerHTML}
             <div className="p-3.5 bg-[var(--color-surface)] rounded-xl border border-[var(--color-outline-variant)] flex items-center justify-between gap-3 shadow-2xs">
               <div>
                 <h5 className="font-bold text-[var(--color-on-surface)] flex items-center gap-1.5">
-                  <Code className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <Code className="w-4 h-4 text-current" />
                   <span>קובץ HTML בודד (Single HTML Bundle)</span>
                 </h5>
                 <p className="text-[11px] text-[var(--color-on-surface-variant)] mt-0.5">
