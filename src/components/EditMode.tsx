@@ -19,8 +19,12 @@ import {
   ShieldCheck,
   CheckSquare,
   Sparkles,
-  X
+  X,
+  Bookmark,
+  ListTree,
+  Search
 } from 'lucide-react';
+import { HeaderSegment } from '../utils/parserAlgorithm';
 
 const CollapsibleText = ({ text, isPrimary }: { text: string; isPrimary: boolean }) => {
   const [isExpanded, setIsExpanded] = useState(isPrimary);
@@ -51,9 +55,18 @@ const CollapsibleText = ({ text, isPrimary }: { text: string; isPrimary: boolean
 interface EditModeProps {
   session: SessionState;
   onUpdateSession: (updated: SessionState) => void;
+  isNavDrawerOpen?: boolean;
+  onCloseNavDrawer?: () => void;
+  onToggleNavDrawer?: () => void;
 }
 
-export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) => {
+export const EditMode: React.FC<EditModeProps> = ({
+  session,
+  onUpdateSession,
+  isNavDrawerOpen,
+  onCloseNavDrawer,
+  onToggleNavDrawer
+}) => {
   const [editingCommLineIdx, setEditingCommLineIdx] = useState<number | null>(null);
   const [draggedCommLineIdx, setDraggedCommLineIdx] = useState<number | null>(null);
 
@@ -62,7 +75,10 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
   const [pageSize] = useState(40);
   const [sourceSearchQuery, setSourceSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'linked' | 'unlinked' | 'high_confidence' | 'low_confidence' | 'pending'>('all');
-  const [selectedSegmentIndex, setSelectedSegmentIndex] = useState<number | 'all'>('all');
+
+  // Navigation Drawer & Section Heading Highlight state
+  const [highlightedHeaderId, setHighlightedHeaderId] = useState<string | null>(null);
+  const [drawerSearchQuery, setDrawerSearchQuery] = useState('');
 
   // Floating Warning Widget state
   const [isUnlinkedDrawerOpen, setIsUnlinkedDrawerOpen] = useState(false);
@@ -168,20 +184,58 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
     return parseDocumentSegments(commentaryLines.join('\n')).segments;
   }, [commentaryLines]);
 
+  const filteredDrawerSegments = React.useMemo(() => {
+    if (!drawerSearchQuery.trim()) return commentarySegments;
+    const q = drawerSearchQuery.toLowerCase().trim();
+    return commentarySegments.filter(seg =>
+      seg.headerTitle.toLowerCase().includes(q) ||
+      `שורות ${seg.startLine}-${seg.endLine}`.includes(q)
+    );
+  }, [commentarySegments, drawerSearchQuery]);
+
+  const handleSelectHeading = (seg: HeaderSegment) => {
+    // Find target line index for the segment
+    const targetLineIdx1 = seg.headerLineIndex > 0 ? seg.headerLineIndex : seg.startLine;
+
+    // Find target index in filteredCommentaryIndices
+    let targetItemIdx = filteredCommentaryIndices.findIndex(lineArrIdx => (lineArrIdx + 1) >= seg.startLine);
+    if (targetItemIdx === -1 && filteredCommentaryIndices.length > 0) {
+      targetItemIdx = 0;
+    }
+
+    if (targetItemIdx !== -1) {
+      const targetPage = Math.floor(targetItemIdx / pageSize) + 1;
+      setCurrentPage(targetPage);
+    }
+
+    const headerId = seg.headerLineIndex > 0 ? `header-${seg.headerLineIndex}` : `header-start-${seg.startLine}`;
+    setHighlightedHeaderId(headerId);
+
+    setTimeout(() => {
+      const el = document.getElementById(headerId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+
+    setTimeout(() => {
+      setHighlightedHeaderId(null);
+    }, 3000);
+
+    if (onCloseNavDrawer) {
+      onCloseNavDrawer();
+    }
+  };
+
   // Filtered commentary line array indices
   const filteredCommentaryIndices = React.useMemo(() => {
     const indices: number[] = [];
     const q = sourceSearchQuery.toLowerCase().trim();
-    const currentSeg = selectedSegmentIndex !== 'all' ? commentarySegments[selectedSegmentIndex] : null;
 
     commentaryLines.forEach((line, idx) => {
       const commLineIdx1 = idx + 1;
 
       if (!line.trim() || /<h[1-6][^>]*>.*<\/h[1-6]>/i.test(line) || /^#{1,6}\s+/.test(line)) {
-        return;
-      }
-
-      if (currentSeg && (commLineIdx1 < currentSeg.startLine || commLineIdx1 > currentSeg.endLine)) {
         return;
       }
 
@@ -214,7 +268,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
     });
 
     return indices;
-  }, [commentaryLines, links, filterMode, sourceSearchQuery, sourceLines, selectedSegmentIndex, commentarySegments]);
+  }, [commentaryLines, links, filterMode, sourceSearchQuery, sourceLines]);
 
   const totalPages = Math.max(1, Math.ceil(filteredCommentaryIndices.length / pageSize));
 
@@ -466,11 +520,61 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
     );
   };
 
+  // Render Section Heading Banner if this group is the first group for its segment on the current page
+  const renderSegmentHeaderIfNeeded = (groupCommLineIdx1: number, gIdx: number) => {
+    const segIndex = commentarySegments.findIndex(
+      s => groupCommLineIdx1 >= s.startLine && groupCommLineIdx1 <= s.endLine
+    );
+    if (segIndex === -1) return null;
+
+    const seg = commentarySegments[segIndex];
+
+    const isFirstGroupForSegOnPage = currentPageGroups.findIndex(
+      g => g.commIndices[0] >= seg.startLine && g.commIndices[0] <= seg.endLine
+    ) === gIdx;
+
+    if (!isFirstGroupForSegOnPage) return null;
+
+    const headerId = seg.headerLineIndex > 0 ? `header-${seg.headerLineIndex}` : `header-start-${seg.startLine}`;
+    const isHighlighted = highlightedHeaderId === headerId;
+
+    return (
+      <div
+        id={headerId}
+        key={`seg-banner-${seg.headerLineIndex || seg.startLine}`}
+        className={`my-5 p-4 md:p-5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-[var(--color-primary-subtle)] to-transparent border-r-4 border-[var(--color-primary)] shadow-xs transition-all flex flex-wrap items-center justify-between gap-3 ${
+          isHighlighted
+            ? 'ring-4 ring-amber-400 dark:ring-amber-500 animate-pulse scale-[1.01] bg-amber-500/20'
+            : ''
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-[var(--color-primary)] text-[var(--color-on-primary)] shadow-2xs">
+            <Bookmark className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-base md:text-lg font-bold text-[var(--color-on-surface)] font-serif">
+              {seg.headerTitle}
+            </h3>
+            <p className="text-xs text-[var(--color-on-surface-variant)] mt-0.5 font-medium">
+              שורות {seg.startLine} עד {seg.endLine}
+            </p>
+          </div>
+        </div>
+        {seg.headerLineIndex > 0 && (
+          <span className="text-xs font-mono font-bold px-3 py-1 rounded-xl bg-[var(--color-surface)] border border-[var(--color-outline)] text-[var(--color-primary)] shadow-2xs">
+            כותרת בשורה {seg.headerLineIndex}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6 pb-24 text-right" dir="rtl">
       {/* Search & Filter Header Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-outline-variant)] shadow-2xs">
-        {/* Search & Chapter filter bar */}
+        {/* Search input bar */}
         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 flex-1 min-w-[240px]">
           <div className="relative flex-1">
             <input
@@ -485,26 +589,15 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
             />
           </div>
 
-          {commentarySegments.length > 1 && (
-            <div className="flex items-center gap-1.5 bg-[var(--color-surface-container-low)] px-3 py-1.5 rounded-xl border border-[var(--color-outline)] text-xs">
-              <BookOpen className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
-              <span className="font-bold text-[var(--color-on-surface-variant)] shrink-0">סנן לפי פרק/כותרת:</span>
-              <select
-                value={selectedSegmentIndex}
-                onChange={(e) => {
-                  setSelectedSegmentIndex(e.target.value === 'all' ? 'all' : Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="bg-transparent font-bold text-[var(--color-on-surface)] focus:outline-none cursor-pointer py-0.5"
-              >
-                <option value="all">כל הפרקים ({commentarySegments.length})</option>
-                {commentarySegments.map((seg, idx) => (
-                  <option key={idx} value={idx}>
-                    {seg.headerTitle} (שורות {seg.startLine}-{seg.endLine})
-                  </option>
-                ))}
-              </select>
-            </div>
+          {commentarySegments.length > 0 && onToggleNavDrawer && (
+            <button
+              onClick={onToggleNavDrawer}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-[var(--color-surface-container-low)] hover:bg-[var(--color-primary-subtle)] border border-[var(--color-outline)] text-[var(--color-primary)] rounded-xl transition-colors shrink-0"
+              title="פתח סרגל ניווט נשלף עם כל הכותרות"
+            >
+              <ListTree className="w-4 h-4" />
+              <span>כותרות ופרקים ({commentarySegments.length})</span>
+            </button>
           )}
         </div>
 
@@ -614,126 +707,67 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
         ) : (
           currentPageGroups.map((group, gIdx) => {
             const firstLinkObj = group.links[0];
+            const firstCommIdx = group.commIndices[0];
 
             return (
-              <div
-                key={`comm-group-${group.targetKey}-${gIdx}`}
-                className="grid grid-cols-1 md:grid-cols-12 gap-4 p-5 rounded-2xl border bg-[var(--color-surface)] border-[var(--color-outline-variant)] shadow-2xs transition-all"
-              >
-                {/* Primary Commentary Lines (7 Cols) */}
-                <div className="md:col-span-7 space-y-3">
-                  <div className="flex items-center justify-between text-xs font-bold text-[var(--color-primary)]">
-                    <span>פירושים ({group.commIndices.length})</span>
+              <React.Fragment key={`comm-group-wrap-${group.targetKey}-${gIdx}`}>
+                {renderSegmentHeaderIfNeeded(firstCommIdx, gIdx)}
+                <div
+                  className="grid grid-cols-1 md:grid-cols-12 gap-4 p-5 rounded-2xl border bg-[var(--color-surface)] border-[var(--color-outline-variant)] shadow-2xs transition-all"
+                >
+                  {/* Primary Commentary Lines (7 Cols) */}
+                  <div className="md:col-span-7 space-y-3">
+                    <div className="flex items-center justify-between text-xs font-bold text-[var(--color-primary)]">
+                      <span>פירושים ({group.commIndices.length})</span>
+                    </div>
+                    {group.links.map((linkObj, idx) => (
+                      renderCommentaryBox(linkObj, group.commIndices[idx])
+                    ))}
                   </div>
-                  {group.links.map((linkObj, idx) => (
-                    renderCommentaryBox(linkObj, group.commIndices[idx])
-                  ))}
-                </div>
 
-                {/* Target Source Line (5 Cols) */}
-                <div className="md:col-span-5 border-t md:border-t-0 md:border-l border-[var(--color-outline)] pt-4 md:pt-0 pl-0 md:pl-4 space-y-2">
-                  <div className="flex flex-wrap items-center justify-between gap-1 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                  {/* Target Source Line (5 Cols) */}
+                  <div className="md:col-span-5 border-t md:border-t-0 md:border-l border-[var(--color-outline)] pt-4 md:pt-0 pl-0 md:pl-4 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                      {firstLinkObj ? (
+                        <>
+                          <span className="font-bold">
+                            מקור: {firstLinkObj.secondaryTarget ? (firstLinkObj.secondaryTarget === 'rashi' ? 'רש"י' : 'תוספות') : config.targetBookName} (שורה {firstLinkObj.secondaryTarget ? firstLinkObj.secondary_line_index : firstLinkObj.line_index_2})
+                          </span>
+                          <span className="text-[11px] bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md text-emerald-800 dark:text-emerald-300 font-bold max-w-[180px] truncate" title={firstLinkObj.secondaryRef || firstLinkObj.heRef_2 || firstLinkObj.path_2}>
+                            {firstLinkObj.secondaryRef || firstLinkObj.heRef_2 || (firstLinkObj.secondaryTarget ? (firstLinkObj.secondaryTarget === 'rashi' ? 'רש"י' : 'תוספות') : config.targetBookName)}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span>מקור מקושר</span>
+                          <span className="text-xs bg-rose-100 dark:bg-rose-950/60 px-2 py-0.5 rounded-md text-rose-800 dark:text-rose-300 font-bold">
+                            ללא מקור
+                          </span>
+                        </>
+                      )}
+                    </div>
+
                     {firstLinkObj ? (
-                      <>
-                        <span className="font-bold">
-                          מקור: {firstLinkObj.secondaryTarget ? (firstLinkObj.secondaryTarget === 'rashi' ? 'רש"י' : 'תוספות') : config.targetBookName} (שורה {firstLinkObj.secondaryTarget ? firstLinkObj.secondary_line_index : firstLinkObj.line_index_2})
-                        </span>
-                        <span className="text-[11px] bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md text-emerald-800 dark:text-emerald-300 font-bold max-w-[180px] truncate" title={firstLinkObj.secondaryRef || firstLinkObj.heRef_2 || firstLinkObj.path_2}>
-                          {firstLinkObj.secondaryRef || firstLinkObj.heRef_2 || (firstLinkObj.secondaryTarget ? (firstLinkObj.secondaryTarget === 'rashi' ? 'רש"י' : 'תוספות') : config.targetBookName)}
-                        </span>
-                      </>
+                      <CollapsibleText
+                        text={firstLinkObj.secondaryTarget
+                          ? (firstLinkObj.secondaryTarget === 'rashi'
+                              ? (rashiLines && rashiLines[firstLinkObj.secondary_line_index! - 1] || '')
+                              : (tosafotLines && tosafotLines[firstLinkObj.secondary_line_index! - 1] || ''))
+                          : (sourceLines && sourceLines[firstLinkObj.line_index_2 - 1] || '')}
+                        isPrimary={!firstLinkObj.secondaryTarget}
+                      />
                     ) : (
-                      <>
-                        <span>מקור מקושר</span>
-                        <span className="text-xs bg-rose-100 dark:bg-rose-950/60 px-2 py-0.5 rounded-md text-rose-800 dark:text-rose-300 font-bold">
-                          ללא מקור
-                        </span>
-                      </>
+                      <div className="p-5 rounded-xl border border-dashed border-[var(--color-outline)] text-center text-xs text-[var(--color-on-surface-variant)]">
+                        אין מקור מקושר. לחץ על כפתור העריכה בכרטיס הפירוש כדי לקשר.
+                      </div>
                     )}
                   </div>
-
-                  {firstLinkObj ? (
-                    <CollapsibleText
-                      text={firstLinkObj.secondaryTarget
-                        ? (firstLinkObj.secondaryTarget === 'rashi'
-                            ? (rashiLines && rashiLines[firstLinkObj.secondary_line_index! - 1] || '')
-                            : (tosafotLines && tosafotLines[firstLinkObj.secondary_line_index! - 1] || ''))
-                        : (sourceLines && sourceLines[firstLinkObj.line_index_2 - 1] || '')}
-                      isPrimary={!firstLinkObj.secondaryTarget}
-                    />
-                  ) : (
-                    <div className="p-5 rounded-xl border border-dashed border-[var(--color-outline)] text-center text-xs text-[var(--color-on-surface-variant)]">
-                      אין מקור מקושר. לחץ על כפתור העריכה בכרטיס הפירוש כדי לקשר.
-                    </div>
-                  )}
                 </div>
-              </div>
+              </React.Fragment>
             );
           })
         )}
 
-        {/* Secondary Sources Section */}
-        {(((rashiLines && (Object.keys(rashiLinksBySecondaryLine).length > 0 || rashiLinksWithoutLine.length > 0)) || (tosafotLines && (Object.keys(tosafotLinksBySecondaryLine).length > 0 || tosafotLinksWithoutLine.length > 0)))) && (
-          <div className="space-y-4 pt-6">
-            <div className="text-base font-bold text-[var(--color-on-surface)]">מקורות משניים</div>
-            {['rashi', 'tosafot'].map(target => {
-              const targetName = target === 'rashi' ? 'רש"י' : 'תוספות';
-              const lines = target === 'rashi' ? rashiLines : tosafotLines;
-              const linksByLine = target === 'rashi' ? rashiLinksBySecondaryLine : tosafotLinksBySecondaryLine;
-              const linksWithoutLine = target === 'rashi' ? rashiLinksWithoutLine : tosafotLinksWithoutLine;
-              const lineIndices = Object.keys(linksByLine).map(key => Number(key)).sort((a, b) => a - b);
-
-              if (!lines && linksWithoutLine.length === 0) return null;
-
-              return (
-                <div key={target} className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-primary)]">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[var(--color-primary)]" />
-                    <span>מקור משני: {targetName}</span>
-                  </div>
-                  {lineIndices.map(lineIdx => {
-                    const secLine = lines?.[lineIdx - 1] || '';
-                    const linkedCommLinks = linksByLine[lineIdx] || [];
-
-                    return (
-                      <div key={`${target}-line-${lineIdx}`} className="grid grid-cols-1 md:grid-cols-12 gap-4 p-5 rounded-2xl border bg-[var(--color-surface)] border-[var(--color-outline-variant)] shadow-2xs">
-                        <div className="md:col-span-5 border-l-0 md:border-l border-[var(--color-outline)] pl-0 md:pl-4 space-y-2">
-                          <div className="flex items-center justify-between text-xs font-bold text-amber-800 dark:text-amber-300">
-                            <span>{targetName} - שורה {lineIdx}</span>
-                            <span className="text-xs bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 rounded-md text-amber-800 dark:text-amber-300 font-bold">
-                              מקור משני
-                            </span>
-                          </div>
-                          <CollapsibleText text={secLine} isPrimary={false} />
-                        </div>
-                        <div className="md:col-span-7 space-y-3">
-                          <div className="text-xs font-bold text-[var(--color-secondary)] mb-1">
-                            פירושים מקושרים ({linkedCommLinks.length})
-                          </div>
-                          {linkedCommLinks.length === 0 ? (
-                            <div className="p-4 rounded-xl border border-dashed border-[var(--color-outline)] text-center text-xs text-[var(--color-on-surface-variant)]">
-                              אין פירוש מקושר לשורה זו.
-                            </div>
-                          ) : (
-                            linkedCommLinks.map(l => renderCommentaryBox(l))
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {linksWithoutLine.length > 0 && (
-                    <div className="grid grid-cols-1 gap-3 p-5 rounded-2xl border bg-[var(--color-surface)] border-[var(--color-outline-variant)] shadow-2xs">
-                      <div className="text-xs font-bold text-[var(--color-secondary)] mb-2">
-                        קישורים משניים ללא שורה משויכת ב-{targetName}
-                      </div>
-                      {linksWithoutLine.map(link => renderCommentaryBox(link))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
 
         {/* Bottom Pagination Bar */}
         {totalPages > 1 && (
@@ -846,6 +880,7 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
           currentLink={links.find(l => l.line_index_1 === editingCommLineIdx)}
           sourceLinesCount={sourceLines.length}
           sourceLines={sourceLines}
+          commentaryLines={commentaryLines}
           rashiLines={rashiLines}
           tosafotLines={tosafotLines}
           targetBookName={config.targetBookName}
@@ -853,6 +888,109 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
           onSave={handleSaveLink}
           onClose={() => setEditingCommLineIdx(null)}
         />
+      )}
+
+      {/* Retractable Navigation Drawer Sidebar */}
+      {isNavDrawerOpen && (
+        <div className="fixed inset-0 z-50 flex justify-start animate-fade-in" dir="rtl">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
+            onClick={onCloseNavDrawer}
+          />
+
+          {/* Drawer Panel */}
+          <div className="relative z-10 w-80 sm:w-96 max-w-[85vw] h-full bg-[var(--color-surface)] border-l border-[var(--color-outline)] shadow-2xl flex flex-col font-sans transition-all">
+            {/* Drawer Header */}
+            <div className="p-4 border-b border-[var(--color-outline)] flex items-center justify-between bg-[var(--color-surface-container-high)]">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-[var(--color-primary)] text-[var(--color-on-primary)] shadow-2xs">
+                  <ListTree className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-sm sm:text-base font-bold text-[var(--color-on-surface)]">
+                    סרגל ניווט כותרות ופרקים
+                  </h2>
+                  <p className="text-[11px] text-[var(--color-on-surface-variant)]">
+                    סה"כ {commentarySegments.length} כותרות בספר
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onCloseNavDrawer}
+                className="p-1.5 rounded-xl hover:bg-[var(--color-outline-variant)] text-[var(--color-on-surface-variant)] transition-colors cursor-pointer"
+                title="סגור סרגל ניווט"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Heading Search */}
+            {commentarySegments.length > 3 && (
+              <div className="p-3 border-b border-[var(--color-outline)] bg-[var(--color-surface-container-low)]">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={drawerSearchQuery}
+                    onChange={(e) => setDrawerSearchQuery(e.target.value)}
+                    placeholder="סינון/חיפוש בכותרות..."
+                    className="w-full pl-3 pr-8 py-1.5 text-xs bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-lg text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] font-sans"
+                  />
+                  <Search className="w-3.5 h-3.5 text-[var(--color-on-surface-variant)] absolute right-2.5 top-2.5" />
+                </div>
+              </div>
+            )}
+
+            {/* List of extracted Headings */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {filteredDrawerSegments.length === 0 ? (
+                <div className="p-8 text-center text-xs text-[var(--color-on-surface-variant)] bg-[var(--color-surface-container-low)] rounded-xl border border-dashed border-[var(--color-outline)] font-medium">
+                  לא נמצאו כותרות המתאימות לחיפוש
+                </div>
+              ) : (
+                filteredDrawerSegments.map((seg, sIdx) => {
+                  const segLinkCount = links.filter(
+                    l => l.line_index_1 >= seg.startLine && l.line_index_1 <= seg.endLine
+                  ).length;
+
+                  return (
+                    <button
+                      key={`drawer-seg-${sIdx}`}
+                      onClick={() => handleSelectHeading(seg)}
+                      className="w-full text-right p-3 rounded-xl border border-[var(--color-outline-variant)] bg-[var(--color-surface-container-low)] hover:bg-[var(--color-primary-subtle)] hover:border-[var(--color-primary)] transition-all group flex flex-col gap-1.5 cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Bookmark className="w-4 h-4 text-[var(--color-primary)] shrink-0 group-hover:scale-110 transition-transform" />
+                          <span className="font-bold text-xs sm:text-sm text-[var(--color-on-surface)] truncate font-serif">
+                            {seg.headerTitle}
+                          </span>
+                        </div>
+                        {seg.headerLineIndex > 0 && (
+                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-outline)] text-[var(--color-on-surface-variant)] shrink-0">
+                            שורה {seg.headerLineIndex}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-[var(--color-on-surface-variant)] pt-1.5 border-t border-[var(--color-outline-variant)]/60">
+                        <span>שורות {seg.startLine} עד {seg.endLine}</span>
+                        <span className="font-bold text-[var(--color-primary)] bg-[var(--color-surface)] px-2 py-0.5 rounded-md border border-[var(--color-outline-variant)]">
+                          {segLinkCount} קישורים
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-3 border-t border-[var(--color-outline)] bg-[var(--color-surface-container-high)] text-center text-xs text-[var(--color-on-surface-variant)] font-medium">
+              לחיצה על כותרת תגלול אוטומטית לקטע המבוקש בדף
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

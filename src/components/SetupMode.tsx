@@ -56,6 +56,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
   const [customAbbreviations, setCustomAbbreviations] = useState<Record<string, string[]> | undefined>(undefined);
   const [showAbbrModal, setShowAbbrModal] = useState<boolean>(false);
   const [useFuzzyMatching, setUseFuzzyMatching] = useState<boolean>(true);
+  const [useWordWeighting, setUseWordWeighting] = useState<boolean>(true);
 
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -203,7 +204,8 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
         diburHamatchilDelimiter: delimiter,
         useAbbreviationExpansion,
         customAbbreviations,
-        useFuzzyMatching
+        useFuzzyMatching,
+        useWordWeighting
       };
 
       onRunAlgorithm(
@@ -555,6 +557,34 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
                     <span
                       className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
                         useFuzzyMatching ? '-translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* Word Weighting & TF-IDF Settings */}
+              <div className="space-y-2 p-3 bg-[var(--color-surface-container-low)] rounded-xl border border-[var(--color-outline)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <span className="block text-xs font-bold text-[var(--color-on-surface)]">
+                      שקילת מילים וסינון מילות יחס (Word Weighting & TF-IDF)
+                    </span>
+                    <span className="block text-[11px] text-[var(--color-on-surface-variant)]">
+                      הפחתת משקל מילות יחס וקישור שכיחות (של, על, את, אם, כי, אמר וכו') כדי להבטיח שההתאמה תתבסס על מילות תוכן ייחודיות
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setUseWordWeighting(!useWordWeighting)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      useWordWeighting ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-outline)]'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                        useWordWeighting ? '-translate-x-5' : 'translate-x-0'
                       }`}
                     />
                   </button>

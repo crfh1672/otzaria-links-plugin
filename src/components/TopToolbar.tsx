@@ -1,8 +1,8 @@
 import React from 'react';
-import { Save, FolderOpen, Download, ArrowLeftRight, Code, RotateCcw } from 'lucide-react';
+import { Save, FolderOpen, Download, ArrowLeftRight, Code, RotateCcw, ListTree } from 'lucide-react';
 import JSZip from 'jszip';
 import { SessionState } from '../types';
-import { formatLineWithDH } from '../utils/parserAlgorithm';
+import { formatLineWithDH, parseDocumentSegments } from '../utils/parserAlgorithm';
 import { notifySuccess, notifyError } from '../utils/otzariaBridge';
 
 interface TopToolbarProps {
@@ -12,6 +12,8 @@ interface TopToolbarProps {
   onOpenProjects: () => void;
   onOpenHtmlModal: () => void;
   onReturnToSetup: () => void;
+  isNavDrawerOpen?: boolean;
+  onToggleNavDrawer?: () => void;
 }
 
 export const TopToolbar: React.FC<TopToolbarProps> = ({
@@ -21,6 +23,8 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   onOpenProjects,
   onOpenHtmlModal,
   onReturnToSetup,
+  isNavDrawerOpen,
+  onToggleNavDrawer,
 }) => {
   const commentaryName = session?.commentaryTitle || 'ספר פירוש';
   const sourceName = session?.config?.targetBookName || 'ספר מקור';
@@ -131,6 +135,26 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
         {/* Left side: Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
+          {mode === 'edit' && onToggleNavDrawer && (
+            <button
+              onClick={onToggleNavDrawer}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all shadow-xs border ${
+                isNavDrawerOpen
+                  ? 'bg-[var(--color-primary)] text-[var(--color-on-primary)] border-[var(--color-primary)]'
+                  : 'bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] border-[var(--color-outline)]'
+              }`}
+              title="סרגל ניווט בכותרות ופרקים"
+            >
+              <ListTree className="w-3.5 h-3.5" />
+              <span>ניווט בכותרות</span>
+              {session && (
+                <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-100 font-mono mr-0.5">
+                  {parseDocumentSegments(session.commentaryLines.join('\n')).segments.length}
+                </span>
+              )}
+            </button>
+          )}
+
           {mode === 'edit' && (
             <button
               onClick={onReturnToSetup}

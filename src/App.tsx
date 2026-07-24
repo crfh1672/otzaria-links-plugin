@@ -12,9 +12,10 @@ export default function App() {
   const [mode, setMode] = useState<'setup' | 'edit'>('setup');
   const [session, setSession] = useState<SessionState | null>(null);
 
-  // Modals state
+  // Modals & Navigation state
   const [showProjectsModal, setShowProjectsModal] = useState(false);
   const [showHtmlExporterModal, setShowHtmlExporterModal] = useState(false);
+  const [isNavDrawerOpen, setIsNavDrawerOpen] = useState(false);
 
   // Listen for Otzaria plugin events (plugin.boot, theme.changed) and fetch initial theme
   useEffect(() => {
@@ -160,6 +161,8 @@ export default function App() {
         onOpenProjects={() => setShowProjectsModal(true)}
         onOpenHtmlModal={() => setShowHtmlExporterModal(true)}
         onReturnToSetup={() => setMode('setup')}
+        isNavDrawerOpen={isNavDrawerOpen}
+        onToggleNavDrawer={() => setIsNavDrawerOpen(prev => !prev)}
       />
 
       {/* Main Mode View */}
@@ -173,6 +176,9 @@ export default function App() {
               onUpdateSession={updated => {
                 setSession(updated);
               }}
+              isNavDrawerOpen={isNavDrawerOpen}
+              onCloseNavDrawer={() => setIsNavDrawerOpen(false)}
+              onToggleNavDrawer={() => setIsNavDrawerOpen(prev => !prev)}
             />
           )
         )}

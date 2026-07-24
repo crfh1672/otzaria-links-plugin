@@ -1,6 +1,7 @@
 import { OtzariaLink, PluginConfig, DHHighlight } from '../types';
 import { expandAbbreviationsInText, DEFAULT_ABBREVIATIONS } from '../data/abbreviations';
 import { getWordSimilarity } from './fuzzyUtils';
+import { getCombinedWordWeight, calculateDocumentIdfWeights } from './wordWeights';
 
 /**
  * Calculates a confidence score (0-100%) for a generated link.
@@ -9,20 +10,22 @@ export function calculateLinkConfidence(
   isInherited: boolean,
   matchScore: number,
   wordLength: number,
-  isExplicit: boolean
+  isExplicit: boolean,
+  expectedWeight?: number
 ): number {
   if (isInherited) {
     return 75; // Inherited context / שם / בא"ד
   }
-  if (isExplicit && matchScore >= wordLength + 3) {
+  const denominator = expectedWeight && expectedWeight > 0 ? expectedWeight : wordLength;
+  if (isExplicit && matchScore >= denominator + 3) {
     return 98; // Explicit dibur hamatchil exact delimiter match
   }
-  if (wordLength <= 0) return 70;
+  if (denominator <= 0) return 70;
 
-  const ratio = matchScore / wordLength;
-  if (ratio >= 0.95) return 96;
-  if (ratio >= 0.8) return 88;
-  if (ratio >= 0.6) return 76;
+  const ratio = matchScore / denominator;
+  if (ratio >= 0.90) return 96;
+  if (ratio >= 0.75) return 88;
+  if (ratio >= 0.55) return 76;
   return 60;
 }
 
@@ -247,6 +250,11 @@ export function runLinkingParser(
   const rashiDoc = rashiRaw ? parseDocumentSegments(rashiRaw) : null;
   const tosafotDoc = tosafotRaw ? parseDocumentSegments(tosafotRaw) : null;
 
+  const enableWordWeighting = config.useWordWeighting !== false;
+  const srcIdfMap = enableWordWeighting ? calculateDocumentIdfWeights(srcDoc.lines) : undefined;
+  const rashiIdfMap = (enableWordWeighting && rashiDoc) ? calculateDocumentIdfWeights(rashiDoc.lines) : undefined;
+  const tosafotIdfMap = (enableWordWeighting && tosafotDoc) ? calculateDocumentIdfWeights(tosafotDoc.lines) : undefined;
+
   console.log(`  📄 commDoc.segments=${commDoc.segments.length}, srcDoc.segments=${srcDoc.segments.length}, rashiDoc=${rashiDoc ? rashiDoc.segments.length : 'null'}, tosafotDoc=${tosafotDoc ? tosafotDoc.segments.length : 'null'}`);
 
   const links: OtzariaLink[] = [];
@@ -328,11 +336,13 @@ export function runLinkingParser(
         end: number,
         searchPhrase: string,
         fullLineText: string,
-        isExplicit: boolean
-      ): { lineNum: number | null; matchedCount: number } => {
+        isExplicit: boolean,
+        idfMap?: Record<string, number>,
+        prevLineNum?: number | null
+      ): { lineNum: number | null; matchedCount: number; expectedWeight: number } => {
         if (!docLines || docLines.length === 0) {
           console.log(`    ⚠️ searchLineInDoc: docLines is empty!`);
-          return { lineNum: null, matchedCount: 0 };
+          return { lineNum: null, matchedCount: 0, expectedWeight: 0 };
         }
 
         const validStart = Math.max(1, Math.min(start, docLines.length));
@@ -342,7 +352,13 @@ export function runLinkingParser(
         const fullWords = normalizeText(fullLineText).split(/\s+/).filter(Boolean);
         const abbrDict = config.customAbbreviations || DEFAULT_ABBREVIATIONS;
 
-        console.log(`    📊 searchLineInDoc: validStart=${validStart}, validEnd=${validEnd}, searchWords=[${searchWords.join(',')}], fullWords=[${fullWords.join(',')}], isExplicit=${isExplicit}`);
+        const wordsForWeight = isExplicit ? searchWords : fullWords;
+        const expectedWeight = wordsForWeight.reduce(
+          (sum, w) => sum + getCombinedWordWeight(w, enableWordWeighting, idfMap),
+          0
+        );
+
+        console.log(`    📊 searchLineInDoc: validStart=${validStart}, validEnd=${validEnd}, prevLineNum=${prevLineNum ?? 'none'}, searchWords=[${searchWords.join(',')}], fullWords=[${fullWords.join(',')}], isExplicit=${isExplicit}, expectedWeight=${expectedWeight.toFixed(2)}`);
 
         const searchRanges = [
           { s: validStart, e: validEnd }
@@ -385,10 +401,10 @@ export function runLinkingParser(
             if (isExplicit) {
               // Explicit delimiter / כו': search for searchPhrase or expSearchPhrase in docLineNorm / expDocLineNorm
               if (docLineNorm.includes(searchPhrase) || expDocLineNorm.includes(expSearchPhrase)) {
-                // Perfect exact substring match gets maximum bonus
-                currentMatchCount = Math.max(searchWords.length, expSearchWords.length) + 10;
+                // Perfect exact substring match gets maximum bonus based on expectedWeight
+                currentMatchCount = expectedWeight + 10;
               } else {
-                // Word-by-word matching with fuzzy similarity score (exact match = 1.0, slight fuzzy = 0.75..0.95)
+                // Word-by-word matching with fuzzy similarity score and word weighting
                 let matchedOrig = 0;
                 searchWords.forEach(sw => {
                   let maxSim = 0;
@@ -396,7 +412,8 @@ export function runLinkingParser(
                     const sim = getWordSimilarity(sw, dw, enableFuzzy);
                     if (sim > maxSim) maxSim = sim;
                   });
-                  matchedOrig += maxSim;
+                  const wWeight = getCombinedWordWeight(sw, enableWordWeighting, idfMap);
+                  matchedOrig += maxSim * wWeight;
                 });
 
                 let matchedExp = 0;
@@ -406,14 +423,14 @@ export function runLinkingParser(
                     const sim = getWordSimilarity(sw, dw, enableFuzzy);
                     if (sim > maxSim) maxSim = sim;
                   });
-                  matchedExp += maxSim;
+                  const wWeight = getCombinedWordWeight(sw, enableWordWeighting, idfMap);
+                  matchedExp += maxSim * wWeight;
                 });
 
                 currentMatchCount = Math.max(matchedOrig, matchedExp);
               }
             } else {
               // No explicit delimiter: find longest contiguous sequence of matching words starting from start of commentary line
-              // Contiguous matching score accumulates 1.0 for exact word matches and ~0.8 for slight fuzzy matches
               const calcContiguousScore = (sourceWords: string[], targetWords: string[]): number => {
                 let maxSeqScore = 0;
                 for (let startWIdx = 0; startWIdx < sourceWords.length; startWIdx++) {
@@ -428,7 +445,8 @@ export function runLinkingParser(
                       const w2 = targetWords[docWIdx + k];
                       const sim = getWordSimilarity(w1, w2, enableFuzzy);
                       if (sim <= 0) break;
-                      seqScore += sim;
+                      const wWeight = getCombinedWordWeight(w1, enableWordWeighting, idfMap);
+                      seqScore += sim * wWeight;
                       k++;
                     }
                     if (seqScore > maxSeqScore) {
@@ -439,14 +457,30 @@ export function runLinkingParser(
                 return maxSeqScore;
               };
 
-              const origScore = calcContiguousScore(fullWords, docWords);
-              const expScore = calcContiguousScore(expFullWords, expDocWords);
-              currentMatchCount = Math.max(origScore, expScore);
+            const origScore = calcContiguousScore(fullWords, docWords);
+            const expScore = calcContiguousScore(expFullWords, expDocWords);
+            let rawMatchCount = Math.max(origScore, expScore);
+
+            // Apply Sequential Monotonicity Penalty if prevLineNum is available
+            // Note: Very subtle bias (max 5% - 7%) so that out-of-order commentaries are not penalized
+            let distPenalty = 1.0;
+            if (prevLineNum !== null && prevLineNum !== undefined && prevLineNum > 0) {
+              const diff = lNum - prevLineNum;
+              if (diff < 0) {
+                // Gentle micro-preference for current/subsequent lines over backward jumps (max 7% drop)
+                distPenalty = Math.max(0.93, 1.0 - Math.abs(diff) * 0.005);
+              } else if (diff > 5) {
+                // Gentle micro-preference for closer lines over far forward jumps (max 5% drop)
+                distPenalty = Math.max(0.95, 1.0 - (diff - 5) * 0.002);
+              }
             }
 
-            const minThreshold = isExplicit 
-              ? Math.min(1.5, Math.max(0.8, searchWords.length * 0.75))
-              : Math.min(1.5, Math.max(0.8, fullWords.length * 0.75));
+            currentMatchCount = rawMatchCount * distPenalty;
+          }
+
+          const minThreshold = isExplicit 
+            ? Math.min(1.5, Math.max(0.7, expectedWeight * 0.65))
+            : Math.min(1.5, Math.max(0.7, expectedWeight * 0.65));
 
             if (currentMatchCount >= minThreshold) {
               const dist = Math.abs(lNum - range.s);
@@ -463,15 +497,15 @@ export function runLinkingParser(
 
           console.log(`    ✓ searchLineInDoc checked ${linesChecked} lines, bestLine=${bestLine}, maxMatchedCount=${maxMatchedCount}`);
           if (bestLine !== null) {
-            return { lineNum: bestLine, matchedCount: maxMatchedCount };
+            return { lineNum: bestLine, matchedCount: maxMatchedCount, expectedWeight };
           }
         }
 
-        return { lineNum: null, matchedCount: 0 };
+        return { lineNum: null, matchedCount: 0, expectedWeight };
       };
 
-      let srcMatchRes = { lineNum: null as number | null, matchedCount: 0 };
-      let secMatchRes = { lineNum: null as number | null, matchedCount: 0 };
+      let srcMatchRes = { lineNum: null as number | null, matchedCount: 0, expectedWeight: 0 };
+      let secMatchRes = { lineNum: null as number | null, matchedCount: 0, expectedWeight: 0 };
 
       // Search in secondary source if routed (unless it's 'בא"ד', in which case we don't search, we inherit)
       if (!shouldInheritLine && targetSecondary === 'rashi' && rashiDoc) {
@@ -482,7 +516,9 @@ export function runLinkingParser(
           rashiSeg ? rashiSeg.endLine : rashiDoc.lines.length,
           cleanDh,
           lineForDhExtraction,
-          isExplicitDelimiter
+          isExplicitDelimiter,
+          rashiIdfMap,
+          previousLink ? previousLink.line_index_2 : null
         );
         console.log(`  → Rashi search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
         matchedSecondaryLineNum = secMatchRes.lineNum;
@@ -494,7 +530,9 @@ export function runLinkingParser(
           tosafotSeg ? tosafotSeg.endLine : tosafotDoc.lines.length,
           cleanDh,
           lineForDhExtraction,
-          isExplicitDelimiter
+          isExplicitDelimiter,
+          tosafotIdfMap,
+          previousLink ? previousLink.line_index_2 : null
         );
         console.log(`  → Tosafot search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
         matchedSecondaryLineNum = secMatchRes.lineNum;
@@ -509,7 +547,9 @@ export function runLinkingParser(
           srcSeg ? srcSeg.endLine : srcDoc.lines.length,
           cleanDh,
           lineForDhExtraction,
-          isExplicitDelimiter
+          isExplicitDelimiter,
+          srcIdfMap,
+          lastMatchedSrcLineIndex || (previousLink ? previousLink.line_index_2 : null)
         );
         console.log(`  → PRIMARY source result: lineNum=${srcMatchRes.lineNum}, matchedCount=${srcMatchRes.matchedCount}`);
         matchedSourceLineNum = srcMatchRes.lineNum;
@@ -587,8 +627,9 @@ export function runLinkingParser(
           : `${config.targetBookName}.txt`;
 
         const matchScore = Math.max(srcMatchRes.matchedCount, secMatchRes.matchedCount);
+        const expWeight = Math.max(srcMatchRes.expectedWeight, secMatchRes.expectedWeight);
         const wordLength = (cleanDh || lineForDhExtraction).split(/\s+/).filter(Boolean).length;
-        const confidence = calculateLinkConfidence(Boolean(isInherited), matchScore, wordLength, isExplicitDelimiter);
+        const confidence = calculateLinkConfidence(Boolean(isInherited), matchScore, wordLength, isExplicitDelimiter, expWeight);
         const status: 'approved' | 'pending' = confidence >= 85 ? 'approved' : 'pending';
 
         const newLink: OtzariaLink = {

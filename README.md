@@ -2,19 +2,48 @@
 <img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
 </div>
 
-# Run and deploy your AI Studio app
+# מחולל קישורים לאוצריא - Otzaria Link Generator & Parser Plugin
 
-This contains everything you need to run your app locally.
+תוסף ומחולל קישורים חכם לניתוח טקסטים תורניים, זיהוי מראות מקומות, חישוב ניקוד התאמה, ויצירת קישורים למאגר ספריית **אוצריא**.
 
-View your app in AI Studio: https://ai.studio/apps/baa8e39d-987e-4a2d-a1fd-d43bc49056fc
+---
 
-## Run Locally
+## 📚 תיעוד מקיף ומפורט של הפרויקט (Project Documentation)
 
-**Prerequisites:**  Node.js
+הפרויקט כולל תיעוד טכני, אלגוריתמי וממשקי מלא בעברית, המפורט בקבצים הבאים בתיקיית `docs/`:
 
+1. [**תיעוד מנגנון האלגוריתם, הניקוד והחיפוש (`docs/ALGORITHM_SEARCH_AND_PARSER.md`)**](./docs/ALGORITHM_SEARCH_AND_PARSER.md)
+   * **ארכיטקטורת ה-Pipeline**: זרימת העיבוד של הטקסט התורני.
+   * **מנוע הגימטריה והמספרים**: המרת אותיות למספרים ולהיפך (`gematria`, `numberToGematria`), מניעת שמות ה' (ט"ו, ט"ז).
+   * **נרמול וניקוי טקסט**: הסרת ניקוד, טעמים ופיסוק (`cleanText`).
+   * **מילון וזיהוי ראשי תיבות**: מילון מורחב תורני מעל 400+ ערכים (`abbreviations.ts`).
+   * **מערכת משקלי המילים**: פילטור מילות עצירה שכיחות (Stop Words תורניים) והורדת ניקוד למניעת התאמות שווא (`wordWeights.ts`).
+   * **אלגוריתם חיפוש גמיש**: Levenshtein Distance ודמיון מחרוזות מורפולוגי (`fuzzyUtils.ts`).
+   * **סריקת חלונות (Sliding Window)** וביטויים רגולריים לזיהוי תבניות ש"ס, שו"ע, רמב"ם, מקרא ומפרשים.
+   * **נוסחת הניקוד המשוקלל**: פירוט רכיבי הציון (0-100), בונוסים וקנסות.
+   * **מבנה אובייקטי הקישור והגשר לאוצריא** (`otzariaBridge.ts`, `otzariaLibraryMock.ts`).
 
-1. Install dependencies:
+2. [**תיעוד מסך הבחירה/ההגדרות (Setup Mode) ומסך העריכה (Edit Mode) (`docs/UI_SETUP_AND_EDIT_MODES.md`)**](./docs/UI_SETUP_AND_EDIT_MODES.md)
+   * **מסך הבחירה וההגדרות (Setup Mode)**:
+     * מנגנוני קלט: הקלדה, גרור-והשלך (Drag & Drop), קטעי טקסט לדוגמה.
+     * כיוונון פרמטרים: סף ניקוד, כמות מועמדים, חיפוש גמיש, הרחבת ראשי תיבות, מסנני היקף ספרים.
+     * מצב חיבור לאוצריא: מצב הדגמה (Mock) לעומת תוסף חי (Otzaria SDK v1.x).
+     * מודאליים: עורך ראשי תיבות, מנהל פרויקטים, ומקמפל התוסף לחבילת `.otzplugin` / קובץ HTML בודד.
+   * **מסך העריכה והבקרה (Edit Mode)**:
+     * ארכיטקטורה מפוצלת (Dual-Pane Split Layout) עם פנל תצוגה מקדימה מאוצריא.
+     * מערכת סטטוסים וקוד צבעוני: מאושר (ירוק), דורש הכרעה (צהוב), לא נמצא (אדום), מבוטל (אפור).
+     * כרטיס קישור אינטראקטיבי: בוחר מועמדים חלופיים, פירוט ניקוד, עריכה ידנית.
+     * סרגל סינון ופעולות אצוותיות (אישור/דחייה גורפת).
+     * מנוע ייצוא רב-פורמטי: Markdown, HTML, `links.json`, JSON פרויקט, העתקה ללוח.
+
+---
+
+## 🚀 הרצה מקומית (Run Locally)
+
+**דרישות מוקדמות:** Node.js
+
+1. התקנת תלויות:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. הרצת שרת הפיתוח:
    `npm run dev`
+

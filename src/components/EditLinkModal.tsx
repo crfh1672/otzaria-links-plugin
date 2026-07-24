@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { OtzariaLink } from '../types';
-import { X, Check, Trash2, ArrowLeftRight, Search, CheckCircle2, Layers, BookOpen } from 'lucide-react';
+import { X, Check, Trash2, ArrowLeftRight, Search, CheckCircle2, Layers, BookOpen, Bookmark, Filter } from 'lucide-react';
+import { parseDocumentSegments, areHeadersMatching } from '../utils/parserAlgorithm';
 
 interface EditLinkModalProps {
   commLineIndex: number; // 1-based
@@ -8,6 +9,7 @@ interface EditLinkModalProps {
   currentLink?: OtzariaLink;
   sourceLinesCount: number;
   sourceLines?: string[];
+  commentaryLines?: string[];
   rashiLines?: string[];
   tosafotLines?: string[];
   targetBookName?: string;
@@ -22,6 +24,7 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
   currentLink,
   sourceLinesCount,
   sourceLines = [],
+  commentaryLines = [],
   rashiLines = [],
   tosafotLines = [],
   targetBookName = 'גמרא',
@@ -42,6 +45,55 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedLines, setExpandedLines] = useState<Record<string, boolean>>({});
+
+  // 1. Find segment for current commentary line
+  const commSeg = useMemo(() => {
+    if (!commentaryLines || commentaryLines.length === 0) return null;
+    const { segments } = parseDocumentSegments(commentaryLines.join('\n'));
+    return segments.find(s => commLineIndex >= s.startLine && commLineIndex <= s.endLine) || null;
+  }, [commentaryLines, commLineIndex]);
+
+  // 2. Parse segments for source books
+  const primarySegments = useMemo(() => {
+    if (!sourceLines || sourceLines.length === 0) return [];
+    return parseDocumentSegments(sourceLines.join('\n')).segments;
+  }, [sourceLines]);
+
+  const rashiSegments = useMemo(() => {
+    if (!rashiLines || rashiLines.length === 0) return [];
+    return parseDocumentSegments(rashiLines.join('\n')).segments;
+  }, [rashiLines]);
+
+  const tosafotSegments = useMemo(() => {
+    if (!tosafotLines || tosafotLines.length === 0) return [];
+    return parseDocumentSegments(tosafotLines.join('\n')).segments;
+  }, [tosafotLines]);
+
+  // 3. Current tab segments
+  const currentTabSegments = useMemo(() => {
+    if (activeTab === 'primary') return primarySegments;
+    if (activeTab === 'rashi') return rashiSegments;
+    if (activeTab === 'tosafot') return tosafotSegments;
+    return [];
+  }, [activeTab, primarySegments, rashiSegments, tosafotSegments]);
+
+  // 4. Find matching segment index in active tab
+  const matchingSegIndex = useMemo(() => {
+    if (!commSeg || currentTabSegments.length === 0) return -1;
+    return currentTabSegments.findIndex(s => areHeadersMatching(commSeg.headerTitle, s.headerTitle));
+  }, [commSeg, currentTabSegments]);
+
+  // 5. Selected segment filter state
+  const [selectedSegIndex, setSelectedSegIndex] = useState<number | 'all'>('all');
+
+  // Sync selected segment whenever activeTab or matchingSegIndex changes
+  useEffect(() => {
+    if (matchingSegIndex !== -1) {
+      setSelectedSegIndex(matchingSegIndex);
+    } else {
+      setSelectedSegIndex('all');
+    }
+  }, [activeTab, matchingSegIndex]);
 
   const handleApply = () => {
     if (targetLine < 1) return;
@@ -81,13 +133,22 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
 
   const currentTabLines = getTabLines();
 
-  // Filter lines by search query
-  const filteredLines = currentTabLines.map((text, idx) => ({ text, lineIdx1: idx + 1 })).filter(item => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase().trim();
-    if (item.lineIdx1.toString() === q) return true;
-    return item.text.toLowerCase().includes(q);
-  });
+  // Filter lines by selected segment & search query
+  const filteredLines = useMemo(() => {
+    const seg = selectedSegIndex !== 'all' ? currentTabSegments[selectedSegIndex] : null;
+
+    return currentTabLines
+      .map((text, idx) => ({ text, lineIdx1: idx + 1 }))
+      .filter(item => {
+        if (seg && (item.lineIdx1 < seg.startLine || item.lineIdx1 > seg.endLine)) {
+          return false;
+        }
+        if (!searchQuery.trim()) return true;
+        const q = searchQuery.toLowerCase().trim();
+        if (item.lineIdx1.toString() === q) return true;
+        return item.text.toLowerCase().includes(q);
+      });
+  }, [currentTabLines, selectedSegIndex, currentTabSegments, searchQuery]);
 
   const getTabTitle = (tab: 'primary' | 'rashi' | 'tosafot') => {
     if (tab === 'primary') return targetBookName || 'גמרא / מקור ראשי';
@@ -108,7 +169,7 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)] rounded-xl transition-colors"
+            className="p-1.5 text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)] rounded-xl transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -123,6 +184,50 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
               {commLineText}
             </p>
           </div>
+
+          {/* Section Header Filter Banner */}
+          {commSeg && (
+            <div className="p-3.5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-outline)] shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 font-bold text-[var(--color-on-surface)]">
+                <Bookmark className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
+                <span>כותרת בקטע הפירוש:</span>
+                <span className="font-serif text-sm font-bold text-[var(--color-primary)] bg-[var(--color-primary-subtle)] px-2.5 py-0.5 rounded-lg border border-[var(--color-primary)]/20">
+                  {commSeg.headerTitle}
+                </span>
+              </div>
+
+              {currentTabSegments.length > 0 ? (
+                <div className="flex items-center gap-1.5 bg-[var(--color-surface-container-low)] px-3 py-1.5 rounded-xl border border-[var(--color-outline)] shrink-0">
+                  <Filter className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
+                  <span className="font-bold text-[var(--color-on-surface-variant)] text-[11px] shrink-0">סינון כותרת:</span>
+                  <select
+                    value={selectedSegIndex}
+                    onChange={(e) => setSelectedSegIndex(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                    className="bg-transparent font-bold text-[var(--color-on-surface)] text-xs focus:outline-none cursor-pointer max-w-[220px] truncate"
+                  >
+                    {matchingSegIndex !== -1 && (
+                      <option value={matchingSegIndex}>
+                        ✨ כותרת מקבילה: {currentTabSegments[matchingSegIndex].headerTitle} ({currentTabSegments[matchingSegIndex].endLine - currentTabSegments[matchingSegIndex].startLine + 1} שורות)
+                      </option>
+                    )}
+                    <option value="all">כל שורות הספר ({currentTabLines.length})</option>
+                    {currentTabSegments.map((seg, idx) => {
+                      if (idx === matchingSegIndex) return null;
+                      return (
+                        <option key={idx} value={idx}>
+                          {seg.headerTitle} ({seg.endLine - seg.startLine + 1} שורות)
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              ) : (
+                <span className="text-[11px] text-[var(--color-on-surface-variant)] italic">
+                  מוצגות כל שורות הספר
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Source Tabs Header */}
           <div className="space-y-3">
@@ -233,8 +338,17 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
             {/* Lines Grid / Cards List */}
             <div className="max-h-[340px] overflow-y-auto space-y-2.5 p-1 rounded-xl">
               {filteredLines.length === 0 ? (
-                <div className="p-8 text-center text-xs md:text-sm text-[var(--color-on-surface-variant)] bg-[var(--color-surface)] rounded-xl border border-dashed border-[var(--color-outline)] font-medium">
-                  לא נמצאו שורות מתאימות ב-{getTabTitle(activeTab)}
+                <div className="p-8 text-center text-xs md:text-sm text-[var(--color-on-surface-variant)] bg-[var(--color-surface)] rounded-xl border border-dashed border-[var(--color-outline)] font-medium space-y-2">
+                  <p>לא נמצאו שורות מתאימות ב-{getTabTitle(activeTab)} בכותרת שנבחרה.</p>
+                  {selectedSegIndex !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSegIndex('all')}
+                      className="text-xs text-[var(--color-primary)] font-bold underline cursor-pointer"
+                    >
+                      הצג את כל שורות הספר (ללא סינון)
+                    </button>
+                  )}
                 </div>
               ) : (
                 filteredLines.map(({ text, lineIdx1 }) => {
@@ -315,7 +429,7 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
           <button
             type="button"
             onClick={handleDelete}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900 transition-colors cursor-pointer"
           >
             <Trash2 className="w-4 h-4" />
             <span>מחק קישור</span>
@@ -325,14 +439,14 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)] rounded-xl transition-colors"
+              className="px-4 py-2 text-xs font-bold text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)] rounded-xl transition-colors cursor-pointer"
             >
               ביטול
             </button>
             <button
               type="button"
               onClick={handleApply}
-              className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:opacity-90 rounded-xl transition-all shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:opacity-90 rounded-xl transition-all shadow-2xs cursor-pointer"
             >
               <Check className="w-4 h-4" />
               <span>אישור ושמירה</span>
@@ -343,3 +457,4 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
     </div>
   );
 };
+
