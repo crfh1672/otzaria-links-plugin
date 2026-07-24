@@ -229,7 +229,8 @@ export function runLinkingParser(
 
       const trimmedLine = cLineRaw.trim();
       const normCommLine = normalizeText(trimmedLine);
-      const normalizedPrefixLine = normalizeHebrewQuotes(trimmedLine).replace(/^[^\p{L}\p{N}]*/u, '');
+      // Normalize the prefix line fully for keyword matching (includes nikud removal, quote normalization)
+      const normalizedPrefixLine = normalizeText(trimmedLine, false);
 
       // Check routing to secondary sources (Step 4)
       let targetSecondary: 'rashi' | 'tosafot' | null = null;
@@ -251,7 +252,13 @@ export function runLinkingParser(
 
       // Extract DH search text using stripped line if secondary prefix present
       const lineForDh = stripSecondaryPrefix(trimmedLine);
-      const { dhText, cleanDh, isExplicitDelimiter } = extractDiburHamatchil(lineForDh || trimmedLine, config.diburHamatchilDelimiter);
+      // For secondary target explicit lines, if stripSecondaryPrefix returns empty, skip this line
+      if (explicitSecondaryTarget && !lineForDh.trim()) {
+        return; // No DH text after removing secondary prefix - skip this commentary line
+      }
+      // For non-explicit lines, use lineForDh or fallback to trimmedLine
+      const lineForDhExtraction = lineForDh.trim() ? lineForDh : trimmedLine;
+      const { dhText, cleanDh, isExplicitDelimiter } = extractDiburHamatchil(lineForDhExtraction, config.diburHamatchilDelimiter);
 
       let matchedSourceLineNum: number | null = null;
       let matchedSecondaryLineNum: number | null = null;
@@ -358,7 +365,7 @@ export function runLinkingParser(
           rashiSeg ? rashiSeg.startLine : 1,
           rashiSeg ? rashiSeg.endLine : rashiDoc.lines.length,
           cleanDh,
-          lineForDh || trimmedLine,
+          lineForDhExtraction,
           isExplicitDelimiter
         );
         matchedSecondaryLineNum = secMatchRes.lineNum;
@@ -368,7 +375,7 @@ export function runLinkingParser(
           tosafotSeg ? tosafotSeg.startLine : 1,
           tosafotSeg ? tosafotSeg.endLine : tosafotDoc.lines.length,
           cleanDh,
-          lineForDh || trimmedLine,
+          lineForDhExtraction,
           isExplicitDelimiter
         );
         matchedSecondaryLineNum = secMatchRes.lineNum;
