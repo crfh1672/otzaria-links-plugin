@@ -1,4 +1,30 @@
 import { OtzariaLink, PluginConfig, DHHighlight } from '../types';
+import { expandAbbreviationsInText, DEFAULT_ABBREVIATIONS } from '../data/abbreviations';
+import { getWordSimilarity } from './fuzzyUtils';
+
+/**
+ * Calculates a confidence score (0-100%) for a generated link.
+ */
+export function calculateLinkConfidence(
+  isInherited: boolean,
+  matchScore: number,
+  wordLength: number,
+  isExplicit: boolean
+): number {
+  if (isInherited) {
+    return 75; // Inherited context / שם / בא"ד
+  }
+  if (isExplicit && matchScore >= wordLength + 3) {
+    return 98; // Explicit dibur hamatchil exact delimiter match
+  }
+  if (wordLength <= 0) return 70;
+
+  const ratio = matchScore / wordLength;
+  if (ratio >= 0.95) return 96;
+  if (ratio >= 0.8) return 88;
+  if (ratio >= 0.6) return 76;
+  return 60;
+}
 
 /**
  * Normalizes Hebrew text for search/comparison only.
@@ -42,13 +68,26 @@ export function extractHeaderTitle(line: string): string {
   return trimmed;
 }
 
+export function normalizeHeaderForComparison(header: string): string {
+  if (!header) return '';
+  let title = extractHeaderTitle(header);
+  title = normalizeHebrewQuotes(title);
+  // Normalize Talmudic Daf notation: דף ב. -> דף ב עמוד א, דף ב: -> דף ב עמוד ב
+  title = title.replace(/דף\s+([\u05D0-\u05EA]+)\s*\./g, 'דף $1 עמוד א');
+  title = title.replace(/דף\s+([\u05D0-\u05EA]+)\s*:/g, 'דף $1 עמוד ב');
+  title = title.replace(/דף\s+([\u05D0-\u05EA]+)\s*ע"?א/g, 'דף $1 עמוד א');
+  title = title.replace(/דף\s+([\u05D0-\u05EA]+)\s*ע"?ב/g, 'דף $1 עמוד ב');
+  
+  return normalizeText(title, false);
+}
+
 /**
  * Compares two header strings according to SRS rule:
- * Ignore header level, ignore punctuation EXCEPT '.' and ':', match normalized text.
+ * Ignore header level, normalize daf/chapter variations, match normalized text.
  */
 export function areHeadersMatching(h1: string, h2: string): boolean {
-  const norm1 = normalizeText(extractHeaderTitle(h1), true);
-  const norm2 = normalizeText(extractHeaderTitle(h2), true);
+  const norm1 = normalizeHeaderForComparison(h1);
+  const norm2 = normalizeHeaderForComparison(h2);
   if (!norm1 || !norm2) return false;
   return norm1 === norm2 || norm1.includes(norm2) || norm2.includes(norm1);
 }
@@ -250,18 +289,19 @@ export function runLinkingParser(
         explicitSecondaryTarget = true;
         console.log(`  ✅ Detected Tosafot keyword. normalizedPrefixLine='${normalizedPrefixLine}'`);
       } else {
-        const baadRegex = /^(?:שם\s+)?(?:או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד|בד"ה|בדה)(?:\s|$|[:.\-])/i;
-        if (normalizedPrefixLine.match(baadRegex)) {
+        const inheritTargetRegex = /^(?:שם\s+)?(?:או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד|בד"ה|בדה|ד"ה|דה)(?:\s|$|[:.\-])/i;
+        if (normalizedPrefixLine.match(inheritTargetRegex) || trimmedLine.startsWith('שם')) {
           targetSecondary = previousSecondaryType;
           if (targetSecondary) explicitSecondaryTarget = true;
         }
       }
 
-      const baadRegexAll = /^(?:שם\s+)?(?:או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד|בד"ה|בדה)(?:\s|$|[:.\-])/i;
-      const isBaad = Boolean(normalizedPrefixLine.match(baadRegexAll));
+      const isBaadRegex = /^(?:שם\s+)?(?:או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד)(?:\s|$|[:.\-])/i;
+      const isBaad = Boolean(normalizedPrefixLine.match(isBaadRegex));
+      const isJustSham = trimmedLine.startsWith('שם') && !normalizedPrefixLine.match(/^שם\s+(?:ד"ה|דה|בד"ה|בדה)(?:\s|$|[:.\-])/i);
 
       // Handle Inheritance ("שם" - Step 5)
-      const startsWithSham = trimmedLine.startsWith('שם') || isBaad;
+      const shouldInheritLine = isBaad || isJustSham;
       let isInherited = false;
 
       // Extract DH search text using stripped line if secondary prefix present
@@ -300,6 +340,7 @@ export function runLinkingParser(
 
         const searchWords = searchPhrase.split(/\s+/).filter(Boolean);
         const fullWords = normalizeText(fullLineText).split(/\s+/).filter(Boolean);
+        const abbrDict = config.customAbbreviations || DEFAULT_ABBREVIATIONS;
 
         console.log(`    📊 searchLineInDoc: validStart=${validStart}, validEnd=${validEnd}, searchWords=[${searchWords.join(',')}], fullWords=[${fullWords.join(',')}], isExplicit=${isExplicit}`);
 
@@ -323,41 +364,89 @@ export function runLinkingParser(
             const docWords = docLineNorm.split(/\s+/).filter(Boolean);
             if (docWords.length === 0) continue;
 
+            // Expand Rashei Teivot (abbreviations) for candidate target line
+            const expSearchPhrase = config.useAbbreviationExpansion !== false
+              ? expandAbbreviationsInText(searchPhrase, docLineNorm, abbrDict)
+              : searchPhrase;
+            const expFullLineText = config.useAbbreviationExpansion !== false
+              ? expandAbbreviationsInText(fullLineText, docLineNorm, abbrDict)
+              : fullLineText;
+            const expDocLineNorm = config.useAbbreviationExpansion !== false
+              ? expandAbbreviationsInText(docLineNorm, fullLineText, abbrDict)
+              : docLineNorm;
+
+            const expSearchWords = normalizeText(expSearchPhrase).split(/\s+/).filter(Boolean);
+            const expFullWords = normalizeText(expFullLineText).split(/\s+/).filter(Boolean);
+            const expDocWords = normalizeText(expDocLineNorm).split(/\s+/).filter(Boolean);
+
+            const enableFuzzy = config.useFuzzyMatching !== false;
             let currentMatchCount = 0;
 
             if (isExplicit) {
-              // Explicit delimiter / כו': search for searchPhrase in docLineNorm
-              if (docLineNorm.includes(searchPhrase)) {
-                currentMatchCount = searchWords.length + 5;
+              // Explicit delimiter / כו': search for searchPhrase or expSearchPhrase in docLineNorm / expDocLineNorm
+              if (docLineNorm.includes(searchPhrase) || expDocLineNorm.includes(expSearchPhrase)) {
+                // Perfect exact substring match gets maximum bonus
+                currentMatchCount = Math.max(searchWords.length, expSearchWords.length) + 10;
               } else {
-                let matched = 0;
-                searchWords.forEach(w => {
-                  if (docLineNorm.includes(w)) matched++;
+                // Word-by-word matching with fuzzy similarity score (exact match = 1.0, slight fuzzy = 0.75..0.95)
+                let matchedOrig = 0;
+                searchWords.forEach(sw => {
+                  let maxSim = 0;
+                  docWords.forEach(dw => {
+                    const sim = getWordSimilarity(sw, dw, enableFuzzy);
+                    if (sim > maxSim) maxSim = sim;
+                  });
+                  matchedOrig += maxSim;
                 });
-                currentMatchCount = matched;
+
+                let matchedExp = 0;
+                expSearchWords.forEach(sw => {
+                  let maxSim = 0;
+                  expDocWords.forEach(dw => {
+                    const sim = getWordSimilarity(sw, dw, enableFuzzy);
+                    if (sim > maxSim) maxSim = sim;
+                  });
+                  matchedExp += maxSim;
+                });
+
+                currentMatchCount = Math.max(matchedOrig, matchedExp);
               }
             } else {
-              // No explicit delimiter: find longest contiguous sequence of words starting from start of commentary line
-              for (let startWIdx = 0; startWIdx < fullWords.length; startWIdx++) {
-                for (let docWIdx = 0; docWIdx < docWords.length; docWIdx++) {
-                  let k = 0;
-                  while (
-                    startWIdx + k < fullWords.length &&
-                    docWIdx + k < docWords.length &&
-                    fullWords[startWIdx + k] === docWords[docWIdx + k]
-                  ) {
-                    k++;
-                  }
-                  if (k > currentMatchCount) {
-                    currentMatchCount = k;
+              // No explicit delimiter: find longest contiguous sequence of matching words starting from start of commentary line
+              // Contiguous matching score accumulates 1.0 for exact word matches and ~0.8 for slight fuzzy matches
+              const calcContiguousScore = (sourceWords: string[], targetWords: string[]): number => {
+                let maxSeqScore = 0;
+                for (let startWIdx = 0; startWIdx < sourceWords.length; startWIdx++) {
+                  for (let docWIdx = 0; docWIdx < targetWords.length; docWIdx++) {
+                    let k = 0;
+                    let seqScore = 0;
+                    while (
+                      startWIdx + k < sourceWords.length &&
+                      docWIdx + k < targetWords.length
+                    ) {
+                      const w1 = sourceWords[startWIdx + k];
+                      const w2 = targetWords[docWIdx + k];
+                      const sim = getWordSimilarity(w1, w2, enableFuzzy);
+                      if (sim <= 0) break;
+                      seqScore += sim;
+                      k++;
+                    }
+                    if (seqScore > maxSeqScore) {
+                      maxSeqScore = seqScore;
+                    }
                   }
                 }
-              }
+                return maxSeqScore;
+              };
+
+              const origScore = calcContiguousScore(fullWords, docWords);
+              const expScore = calcContiguousScore(expFullWords, expDocWords);
+              currentMatchCount = Math.max(origScore, expScore);
             }
 
             const minThreshold = isExplicit 
-              ? Math.min(2, Math.max(1, searchWords.length))
-              : Math.min(2, Math.max(1, fullWords.length));
+              ? Math.min(1.5, Math.max(0.8, searchWords.length * 0.75))
+              : Math.min(1.5, Math.max(0.8, fullWords.length * 0.75));
 
             if (currentMatchCount >= minThreshold) {
               const dist = Math.abs(lNum - range.s);
@@ -385,7 +474,7 @@ export function runLinkingParser(
       let secMatchRes = { lineNum: null as number | null, matchedCount: 0 };
 
       // Search in secondary source if routed (unless it's 'בא"ד', in which case we don't search, we inherit)
-      if (!isBaad && targetSecondary === 'rashi' && rashiDoc) {
+      if (!shouldInheritLine && targetSecondary === 'rashi' && rashiDoc) {
         console.log(`🔍 Searching for Rashi: keyword='${normalizedPrefixLine}', cleanDh='${cleanDh}', lineForDhExtraction='${lineForDhExtraction}'`);
         secMatchRes = searchLineInDoc(
           rashiDoc.lines,
@@ -397,7 +486,7 @@ export function runLinkingParser(
         );
         console.log(`  → Rashi search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
         matchedSecondaryLineNum = secMatchRes.lineNum;
-      } else if (!isBaad && targetSecondary === 'tosafot' && tosafotDoc) {
+      } else if (!shouldInheritLine && targetSecondary === 'tosafot' && tosafotDoc) {
         console.log(`🔍 Searching for Tosafot: keyword='${normalizedPrefixLine}', cleanDh='${cleanDh}', lineForDhExtraction='${lineForDhExtraction}'`);
         secMatchRes = searchLineInDoc(
           tosafotDoc.lines,
@@ -412,7 +501,7 @@ export function runLinkingParser(
       }
 
       // Search in primary source segment unless the line explicitly targets a secondary source or is 'בא"ד' (which means inherit previous).
-      if (!explicitSecondaryTarget && !isBaad) {
+      if (!explicitSecondaryTarget && !shouldInheritLine) {
         console.log(`🔍 Searching PRIMARY source: lineForDhExtraction='${lineForDhExtraction}', cleanDh='${cleanDh}', isExplicit=${isExplicitDelimiter}`);
         srcMatchRes = searchLineInDoc(
           srcDoc.lines,
@@ -453,7 +542,7 @@ export function runLinkingParser(
       }
 
       // Rule for 'שם' inheritance
-      if (startsWithSham) {
+      if (shouldInheritLine) {
         if (!config.ignoreShamInShas || !matchedSourceLineNum) {
           if (previousLink) {
             matchedSourceLineNum = previousLink.line_index_2;
@@ -497,6 +586,11 @@ export function runLinkingParser(
           ? getSecondaryPath(targetSecondary!, config.targetBookName)
           : `${config.targetBookName}.txt`;
 
+        const matchScore = Math.max(srcMatchRes.matchedCount, secMatchRes.matchedCount);
+        const wordLength = (cleanDh || lineForDhExtraction).split(/\s+/).filter(Boolean).length;
+        const confidence = calculateLinkConfidence(Boolean(isInherited), matchScore, wordLength, isExplicitDelimiter);
+        const status: 'approved' | 'pending' = confidence >= 85 ? 'approved' : 'pending';
+
         const newLink: OtzariaLink = {
           line_index_1: cLineIdx,
           line_index_2: matchedSourceLineNum,
@@ -507,7 +601,9 @@ export function runLinkingParser(
           secondary_line_index: matchedSecondaryLineNum || undefined,
           secondaryRef: isSecondaryLink ? `${getSecondaryBookLabel(targetSecondary!)} (${headerTitle})` : undefined,
           isInherited,
-          dhText: dhText || cleanDh
+          dhText: dhText || cleanDh,
+          confidence,
+          status
         };
 
         links.push(newLink);

@@ -15,6 +15,8 @@ export interface OtzariaLink {
   secondaryRef?: string;
   isInherited?: boolean;      // True if context was inherited (purple background)
   dhText?: string;            // Extracted Dibur Hamatchil
+  confidence?: number;        // Confidence level score (0 - 100%)
+  status?: 'approved' | 'pending'; // Approval state for link review
 }
 
 export interface PluginConfig {
@@ -22,6 +24,9 @@ export interface PluginConfig {
   targetBookName: string;
   ignoreShamInShas: boolean;      // "האם המילה 'שם' משמשת כהפניה לדף בגמרא?"
   diburHamatchilDelimiter?: string; // "תו סיום דיבור המתחיל" (e.g. '.' or '.:')
+  useAbbreviationExpansion?: boolean; // "תמיכה בפענוח ראשי תיבות"
+  customAbbreviations?: Record<string, string[]>; // מילון ראשי תיבות מותאם אישית
+  useFuzzyMatching?: boolean; // "השוואה גמישה קלה (Fuzzy Matching)"
 }
 
 export interface DHHighlight {

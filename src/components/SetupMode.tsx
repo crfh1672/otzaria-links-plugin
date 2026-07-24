@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BookNode, PluginConfig, TANAKH_BOOKS, SHAS_TRACTATES } from '../types';
 import { fetchLibraryTree, fetchBookContent, fetchBookLinks, notifyError } from '../utils/otzariaBridge';
+import { AbbreviationsModal } from './AbbreviationsModal';
 import {
   Search,
   Upload,
@@ -49,6 +50,12 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
   const [targetBook, setTargetBook] = useState<string>(TANAKH_BOOKS[0]);
   const [ignoreShamInShas, setIgnoreShamInShas] = useState<boolean>(false);
   const [delimiter, setDelimiter] = useState<string>('');
+
+  // Rashei Teivot (Abbreviations) & Fuzzy Matching State
+  const [useAbbreviationExpansion, setUseAbbreviationExpansion] = useState<boolean>(true);
+  const [customAbbreviations, setCustomAbbreviations] = useState<Record<string, string[]> | undefined>(undefined);
+  const [showAbbrModal, setShowAbbrModal] = useState<boolean>(false);
+  const [useFuzzyMatching, setUseFuzzyMatching] = useState<boolean>(true);
 
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -193,7 +200,10 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
         sourceCategory: category,
         targetBookName: targetBook,
         ignoreShamInShas,
-        diburHamatchilDelimiter: delimiter
+        diburHamatchilDelimiter: delimiter,
+        useAbbreviationExpansion,
+        customAbbreviations,
+        useFuzzyMatching
       };
 
       onRunAlgorithm(
@@ -344,7 +354,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
                   <CheckCircle2 className="w-5 h-5 text-[var(--color-on-surface)]" />
                 </div>
 
-                <div className="bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-outline)] text-xs font-serif leading-relaxed text-[var(--color-on-surface)] max-h-[460px] overflow-y-auto whitespace-pre-wrap">
+                <div className="bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-outline)] text-sm font-sans leading-relaxed text-[var(--color-on-surface)] max-h-[460px] overflow-y-auto whitespace-pre-wrap">
                   {loadingBookContent ? (
                     <div className="py-12 text-center text-[var(--color-on-surface-variant)]">טוען תוכן ספר...</div>
                   ) : (
@@ -478,6 +488,78 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
                   אם לא יוגדר תו סיום, האלגוריתם יזהה אוטומטית את ההתאמה הארוכה ביותר של תחילת המשפט במקור.
                 </p>
               </div>
+
+              {/* Rashei Teivot Abbreviation Expansion Settings */}
+              <div className="space-y-2 p-3 bg-[var(--color-surface-container-low)] rounded-xl border border-[var(--color-outline)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <span className="block text-xs font-bold text-[var(--color-on-surface)]">
+                      תמיכה בפענוח ראשי תיבות (ר"ת)
+                    </span>
+                    <span className="block text-[11px] text-[var(--color-on-surface-variant)]">
+                      חיפוש התאמות במקור עבור ראשי תיבות עם אפשרויות מרובות (א"א, א"ב, א"ד, ע"ז וכו')
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setUseAbbreviationExpansion(!useAbbreviationExpansion)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      useAbbreviationExpansion ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-outline)]'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                        useAbbreviationExpansion ? '-translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {useAbbreviationExpansion && (
+                  <div className="pt-2 border-t border-[var(--color-outline-variant)] flex items-center justify-between text-xs">
+                    <span className="text-[11px] text-[var(--color-on-surface-variant)]">
+                      מילון: {customAbbreviations ? `${Object.keys(customAbbreviations).length} ערכים מותאמים` : 'מילון מורחב מובנה'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowAbbrModal(true)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 font-bold text-[var(--color-primary)] hover:bg-[var(--color-secondary-subtle)] rounded-lg transition-colors"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span>ניהול / צפייה במילון</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Fuzzy Matching Settings */}
+              <div className="space-y-2 p-3 bg-[var(--color-surface-container-low)] rounded-xl border border-[var(--color-outline)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <span className="block text-xs font-bold text-[var(--color-on-surface)]">
+                      השוואה גמישה קלה (Fuzzy Matching)
+                    </span>
+                    <span className="block text-[11px] text-[var(--color-on-surface-variant)]">
+                      זיהוי התאמות גם בשינויי אותיות קלים או שגיאות כתיב (דמיון מדויק מקבל עדיפות עליונה)
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setUseFuzzyMatching(!useFuzzyMatching)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      useFuzzyMatching ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-outline)]'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                        useFuzzyMatching ? '-translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -511,6 +593,15 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
           </div>
         </div>
       </div>
+
+      {/* Rashei Teivot Dictionary Modal */}
+      {showAbbrModal && (
+        <AbbreviationsModal
+          customDict={customAbbreviations}
+          onSaveDict={(newDict) => setCustomAbbreviations(newDict)}
+          onClose={() => setShowAbbrModal(false)}
+        />
+      )}
     </div>
   );
 };

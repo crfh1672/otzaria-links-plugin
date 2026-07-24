@@ -42,7 +42,10 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           line_index_2: link.line_index_2,
           heRef_2: link.heRef_2,
           path_2: link.path_2,
-          connection_type: link.connection_type
+          connection_type: link.connection_type,
+          dhText: link.dhText,
+          confidence: link.confidence,
+          status: link.status
         });
       });
 
@@ -50,7 +53,32 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
       const cleanFileName = session.commentaryTitle.replace(/[/\\?%*:|"<>]/g, '_');
       zip.file(`${cleanFileName}_links.json`, linksJsonContent);
 
-      // 2. Generate updated commentary .txt file with <b>...</b> tags
+      // 2. Generate _links.csv
+      const csvHeaders = ['line_index_1', 'line_index_2', 'heRef_2', 'path_2', 'connection_type', 'dhText', 'confidence', 'status'];
+      const escapeCsv = (val: any) => {
+        if (val === undefined || val === null) return '""';
+        const str = String(val);
+        if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return `"${str}"`;
+      };
+
+      const csvRows = session.links.map(link => [
+        escapeCsv(link.line_index_1),
+        escapeCsv(link.line_index_2),
+        escapeCsv(link.heRef_2),
+        escapeCsv(link.path_2),
+        escapeCsv(link.connection_type || 'commentary'),
+        escapeCsv(link.dhText || ''),
+        escapeCsv(link.confidence ?? 85),
+        escapeCsv(link.status || 'approved')
+      ].join(','));
+
+      const csvContent = '\uFEFF' + [csvHeaders.join(','), ...csvRows].join('\r\n');
+      zip.file(`${cleanFileName}_links.csv`, csvContent);
+
+      // 3. Generate updated commentary .txt file with <b>...</b> tags
       const updatedLines = session.commentaryLines.map((line, idx) => {
         const lineIdx1 = idx + 1; // 1-based
         const highlight = session.dhHighlights?.[lineIdx1];
@@ -75,7 +103,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      notifySuccess('קובץ ZIP ייוצא בהצלחה!');
+      notifySuccess('קובץ ZIP (כולל TXT, JSON ו-CSV) ייוצא בהצלחה!');
     } catch (e) {
       console.error(e);
       notifyError('אירעה שגיאה ביצירת קובץ ה-ZIP');
