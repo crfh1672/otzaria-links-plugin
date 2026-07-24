@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { SessionState, OtzariaLink, DHHighlight } from '../types';
-import { formatLineWithDH } from '../utils/parserAlgorithm';
+import { formatLineWithDH, isHeaderLine } from '../utils/parserAlgorithm';
 import { EditLinkModal } from './EditLinkModal';
 import {
   Edit3,
@@ -94,45 +94,55 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
     return new Set(links.map(l => l.line_index_1));
   }, [links]);
 
-  // Filtered source line array indices
-  const filteredSourceIndices = React.useMemo(() => {
+  // Filtered commentary line array indices
+  const filteredCommentaryIndices = React.useMemo(() => {
     const indices: number[] = [];
     const q = sourceSearchQuery.toLowerCase().trim();
 
-    sourceLines.forEach((line, idx) => {
-      const srcLineIdx1 = idx + 1;
-      const linkedCount = (linksBySourceLine[srcLineIdx1] || []).length;
+    commentaryLines.forEach((line, idx) => {
+      const commLineIdx1 = idx + 1;
+      
+      // Ignore header lines or empty lines
+      if (!line.trim() || /<h[1-6][^>]*>.*<\/h[1-6]>/i.test(line) || /^#{1,6}\s+/.test(line)) {
+        return;
+      }
 
-      if (filterLinkedOnly && linkedCount === 0) return;
+      const link = links.find(l => l.line_index_1 === commLineIdx1);
+
+      // If filtering for linked only, skip if no link exists
+      if (filterLinkedOnly && !link) return;
 
       if (q) {
-        const lineMatches = line.toLowerCase().includes(q) || srcLineIdx1.toString() === q;
-        const commMatches = (linksBySourceLine[srcLineIdx1] || []).some(l => {
-          const commText = commentaryLines[l.line_index_1 - 1] || '';
-          return commText.toLowerCase().includes(q);
-        });
-        if (!lineMatches && !commMatches) return;
+        const lineMatches = line.toLowerCase().includes(q) || commLineIdx1.toString() === q;
+        let targetMatches = false;
+        
+        // Search inside the linked target source if it exists
+        if (link && !link.secondaryTarget && sourceLines[link.line_index_2 - 1]) {
+          targetMatches = sourceLines[link.line_index_2 - 1].toLowerCase().includes(q);
+        }
+        
+        if (!lineMatches && !targetMatches) return;
       }
 
       indices.push(idx);
     });
 
     return indices;
-  }, [sourceLines, linksBySourceLine, filterLinkedOnly, sourceSearchQuery, commentaryLines]);
+  }, [commentaryLines, links, filterLinkedOnly, sourceSearchQuery, sourceLines]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredSourceIndices.length / pageSize));
+  const totalPages = Math.max(1, Math.ceil(filteredCommentaryIndices.length / pageSize));
   
   // Reset page if filtered results contract
   React.useEffect(() => {
     if (currentPage > totalPages) {
       setCurrentPage(1);
     }
-  }, [filteredSourceIndices.length, totalPages, currentPage]);
+  }, [filteredCommentaryIndices.length, totalPages, currentPage]);
 
   const currentPageIndices = React.useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return filteredSourceIndices.slice(start, start + pageSize);
-  }, [filteredSourceIndices, currentPage, pageSize]);
+    return filteredCommentaryIndices.slice(start, start + pageSize);
+  }, [filteredCommentaryIndices, currentPage, pageSize]);
 
   // Unlinked commentary lines
   const unlinkedCommLines = React.useMemo(() => {
@@ -443,74 +453,59 @@ export const EditMode: React.FC<EditModeProps> = ({ session, onUpdateSession }) 
 
           <div className="flex items-center justify-between text-xs text-[var(--color-on-surface-variant)] px-1">
             <span>
-              מציג {currentPageIndices.length} שורות מקור (סה"כ {filteredSourceIndices.length})
+              מציג {currentPageIndices.length} שורות פירוש (סה"כ {filteredCommentaryIndices.length})
             </span>
           </div>
 
           {currentPageIndices.length === 0 ? (
             <div className="p-8 text-center text-xs text-[var(--color-on-surface-variant)] bg-[var(--color-surface)] rounded-2xl border border-dashed border-[var(--color-outline)]">
-              לא נמצאו שורות מקור המתאימות לסינון
+              לא נמצאו שורות פירוש המתאימות לסינון
             </div>
           ) : (
             currentPageIndices.map(idx => {
-              const srcLine = sourceLines[idx];
-              const srcLineIdx1 = idx + 1; // 1-based index
-              const isHeader = /<h[1-6][^>]*>.*<\/h[1-6]>/i.test(srcLine) || /^#{1,6}\s+/.test(srcLine);
-              const linkedCommLinks = linksBySourceLine[srcLineIdx1] || [];
-              const isDragOver = dragOverSourceIdx === srcLineIdx1;
-
-              if (isHeader) {
-                return (
-                  <div
-                    key={`src-hdr-${srcLineIdx1}`}
-                    className="my-4 p-3.5 bg-[var(--color-primary)] text-[var(--color-on-primary)] rounded-xl shadow-2xs border border-[var(--color-outline)] font-bold text-sm"
-                    dangerouslySetInnerHTML={{ __html: srcLine }}
-                  />
-                );
-              }
-
+              const commLineIdx1 = idx + 1; // 1-based index
+              const linkObj = links.find(l => l.line_index_1 === commLineIdx1);
+              
               return (
                 <div
-                  key={`src-card-${srcLineIdx1}`}
-                  onDragOver={e => handleDragOver(e, srcLineIdx1)}
-                  onDrop={() => handleDropOnSourceCard(srcLineIdx1)}
-                  className={`grid grid-cols-1 md:grid-cols-12 gap-3 p-4 rounded-2xl border transition-all ${
-                    isDragOver
-                      ? 'border-2 border-[var(--color-primary)] bg-[var(--color-primary-subtle)] ring-2 ring-[var(--color-primary)]/30'
-                      : 'bg-[var(--color-surface)] border-[var(--color-outline-variant)] shadow-2xs'
-                  }`}
+                  key={`comm-card-${commLineIdx1}`}
+                  className="grid grid-cols-1 md:grid-cols-12 gap-3 p-4 rounded-2xl border bg-[var(--color-surface)] border-[var(--color-outline-variant)] shadow-2xs transition-all"
                 >
-                  {/* Left Side: Target Source Line (5 Cols) */}
-                  <div className="md:col-span-5 border-l-0 md:border-l border-[var(--color-outline)] pl-0 md:pl-3 space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
-                      <span>{config.targetBookName} - שורה {srcLineIdx1}</span>
-                      <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded-md text-emerald-800 dark:text-emerald-300">
-                        מקור
-                      </span>
+                  {/* Right Side (Primary): Commentary Line (7 Cols) */}
+                  <div className="md:col-span-7 space-y-2">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-[var(--color-primary)]">
+                      <span>פירוש - שורה {commLineIdx1}</span>
                     </div>
-
-                    <p className="text-xs font-serif leading-relaxed text-[var(--color-on-surface)]">
-                      {srcLine}
-                    </p>
+                    {renderCommentaryBox(linkObj, commLineIdx1)}
                   </div>
 
-                  {/* Right Side: Linked Commentary Lines Stacked (7 Cols) */}
-                  <div className="md:col-span-7 space-y-2">
-                    <div className="text-[11px] font-bold text-[var(--color-primary)] mb-1 flex items-center justify-between">
-                      <span>פירושים מקושרים ({linkedCommLinks.length})</span>
-                      {isDragOver && (
-                        <span className="text-[10px] bg-[var(--color-primary)] text-[var(--color-on-primary)] px-2 py-0.5 rounded shadow-2xs">
-                          השלך כאן כדי לקשר
+                  {/* Left Side (Secondary): Target Source Line (5 Cols) */}
+                  <div className="md:col-span-5 border-t md:border-t-0 md:border-l border-[var(--color-outline)] pt-3 md:pt-0 pl-0 md:pl-3 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
+                      <span>מקור מקושר</span>
+                      {linkObj ? (
+                        <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded-md text-emerald-800 dark:text-emerald-300">
+                          {linkObj.secondaryTarget ? (linkObj.secondaryTarget === 'rashi' ? 'רש"י' : 'תוספות') : config.targetBookName}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] bg-rose-100 dark:bg-rose-950/60 px-1.5 py-0.5 rounded-md text-rose-800 dark:text-rose-300">
+                          ללא מקור
                         </span>
                       )}
                     </div>
 
-                    {linkedCommLinks.length === 0 ? (
-                      <div className="p-4 rounded-xl border border-dashed border-[var(--color-outline)] text-center text-[11px] text-[var(--color-on-surface-variant)]">
-                        אין פירוש מקושר לשורה זו. גרור פירוש לכאן.
-                      </div>
+                    {linkObj ? (
+                      <p className="text-xs font-serif leading-relaxed text-[var(--color-on-surface)] bg-emerald-50/30 dark:bg-emerald-950/10 p-2 rounded-lg">
+                        {linkObj.secondaryTarget 
+                          ? (linkObj.secondaryTarget === 'rashi' 
+                              ? (rashiLines && rashiLines[linkObj.secondary_line_index! - 1]) 
+                              : (tosafotLines && tosafotLines[linkObj.secondary_line_index! - 1]))
+                          : (sourceLines && sourceLines[linkObj.line_index_2 - 1])}
+                      </p>
                     ) : (
-                      linkedCommLinks.map(l => renderCommentaryBox(l))
+                      <div className="p-4 rounded-xl border border-dashed border-[var(--color-outline)] text-center text-[11px] text-[var(--color-on-surface-variant)]">
+                        אין מקור מקושר. לחץ על כפתור העריכה כדי לקשר.
+                      </div>
                     )}
                   </div>
                 </div>
