@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { BookNode, PluginConfig, TANAKH_BOOKS, SHAS_TRACTATES, TANAKH_CATEGORIES, SHAS_CATEGORIES } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { BookNode, PluginConfig, TANAKH_BOOKS, SHAS_TRACTATES } from '../types';
 import { fetchLibraryTree, fetchBookContent, fetchBookLinks, notifyError } from '../utils/otzariaBridge';
 import { AbbreviationsModal } from './AbbreviationsModal';
 import {
@@ -10,117 +10,12 @@ import {
   FolderOpen,
   ChevronRight,
   ChevronLeft,
-  ChevronDown,
   ArrowRight,
   Play,
   FileText,
   Settings2,
   CheckCircle2
 } from 'lucide-react';
-
-interface BookSelectDropdownProps {
-  category: 'tanakh' | 'shas';
-  targetBook: string;
-  setTargetBook: (b: string) => void;
-}
-
-const BookSelectDropdown: React.FC<BookSelectDropdownProps> = ({ category, targetBook, setTargetBook }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [filterQuery, setFilterQuery] = useState('');
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  const categories = category === 'tanakh' ? TANAKH_CATEGORIES : SHAS_CATEGORIES;
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const filteredCategories = useMemo(() => {
-    const q = filterQuery.toLowerCase().trim();
-    if (!q) return categories;
-    return categories
-      .map(cat => ({
-        ...cat,
-        books: cat.books.filter(b => b.toLowerCase().includes(q))
-      }))
-      .filter(cat => cat.books.length > 0);
-  }, [categories, filterQuery]);
-
-  return (
-    <div className="relative" ref={dropdownRef}>
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between p-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-xl text-[var(--color-on-surface)] hover:bg-[var(--color-surface-container-high)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] font-semibold transition-all shadow-2xs"
-      >
-        <div className="flex items-center gap-2 truncate">
-          <BookOpen className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
-          <span className="truncate">{targetBook}</span>
-        </div>
-        <ChevronDown className={`w-4 h-4 text-[var(--color-on-surface-variant)] transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-
-      {isOpen && (
-        <div className="absolute top-full right-0 left-0 mt-1.5 bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-xl shadow-2xl z-50 p-2 max-h-72 overflow-y-auto space-y-2">
-          {/* Search Box inside dropdown */}
-          <div className="relative sticky top-0 bg-[var(--color-surface)] pt-0.5 pb-2 border-b border-[var(--color-outline)] z-10">
-            <Search className="w-3.5 h-3.5 text-[var(--color-on-surface-variant)] absolute right-2.5 top-3 -translate-y-1/2" />
-            <input
-              type="text"
-              autoFocus
-              value={filterQuery}
-              onChange={e => setFilterQuery(e.target.value)}
-              placeholder="חיפוש מהיר של ספר..."
-              className="w-full pr-8 pl-2 py-1.5 text-xs bg-[var(--color-surface-container-low)] border border-[var(--color-outline)] rounded-lg text-[var(--color-on-surface)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
-            />
-          </div>
-
-          {/* Grouped Book Lists */}
-          {filteredCategories.length === 0 ? (
-            <div className="p-3 text-center text-xs text-[var(--color-on-surface-variant)]">
-              לא נמצא ספר תואם לחיפוש
-            </div>
-          ) : (
-            filteredCategories.map(cat => (
-              <div key={cat.name} className="space-y-1">
-                <div className="text-[11px] font-bold text-[var(--color-primary)] uppercase tracking-wider px-2 pt-1 pb-0.5 bg-[var(--color-surface-container-high)] rounded-md">
-                  {cat.name}
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
-                  {cat.books.map(book => (
-                    <button
-                      key={book}
-                      type="button"
-                      onClick={() => {
-                        setTargetBook(book);
-                        setIsOpen(false);
-                        setFilterQuery('');
-                      }}
-                      className={`text-right px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-between ${
-                        targetBook === book
-                          ? 'bg-[var(--color-primary)] text-[var(--color-on-primary)] font-bold'
-                          : 'hover:bg-[var(--color-secondary-subtle)] text-[var(--color-on-surface)]'
-                      }`}
-                    >
-                      <span className="truncate">{book}</span>
-                      {targetBook === book && <CheckCircle2 className="w-3 h-3 shrink-0 ml-1" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
 
 interface SetupModeProps {
   onRunAlgorithm: (
@@ -333,11 +228,11 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
 
   // Render recursive category tree
   const renderTreeNode = (node: BookNode) => {
-    const q = searchQuery.toLowerCase().trim();
-    const isExpanded = expandedPaths[node.path] || Boolean(q);
+    const isExpanded = expandedPaths[node.path];
     const hasCategories = node.categories && node.categories.length > 0;
 
     // Filter books based on search query without hooks inside recursive calls
+    const q = searchQuery.toLowerCase().trim();
     const filteredBooks = (!node.books)
       ? []
       : (!q)
@@ -532,11 +427,17 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
               <label className="block text-xs font-bold text-[var(--color-on-surface)]">
                 בחירת ספר המטרה המקושר:
               </label>
-              <BookSelectDropdown
-                category={category}
-                targetBook={targetBook}
-                setTargetBook={setTargetBook}
-              />
+              <select
+                value={targetBook}
+                onChange={e => setTargetBook(e.target.value)}
+                className="w-full p-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-xl text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] font-medium"
+              >
+                {(category === 'tanakh' ? TANAKH_BOOKS : SHAS_TRACTATES).map(book => (
+                  <option key={book} value={book}>
+                    {book}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Commentary Characterization Options */}
