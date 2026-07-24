@@ -84,7 +84,7 @@ const getSecondaryBookLabel = (targetSecondary: 'rashi' | 'tosafot') =>
 export function normalizeHebrewQuotes(text: string): string {
   if (!text) return '';
   return text
-    .replace(/[׳’‘]/g, "'")
+    .replace(/[׳’‘´]/g, "'") // Added '´' for broader single quote normalization
     .replace(/[״“”]/g, '"');
 }
 
@@ -245,7 +245,7 @@ export function runLinkingParser(
         targetSecondary = 'rashi';
         explicitSecondaryTarget = true;
         console.log(`  ✅ Detected Rashi keyword. normalizedPrefixLine='${normalizedPrefixLine}'`);
-      } else if (TOSAFOT_KEYWORDS.some(kw => normalizedPrefixLine.startsWith(kw))) {
+      } else if (TOSAFOT_KEYWORDS.some(kw => normalizedPrefixLine.startsWith(normalizeText(kw, false)))) {
         targetSecondary = 'tosafot';
         explicitSecondaryTarget = true;
         console.log(`  ✅ Detected Tosafot keyword. normalizedPrefixLine='${normalizedPrefixLine}'`);
