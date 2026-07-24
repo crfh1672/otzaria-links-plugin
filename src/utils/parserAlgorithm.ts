@@ -57,7 +57,7 @@ export function areHeadersMatching(h1: string, h2: string): boolean {
  * Keywords for Secondary Source routing
  */
 const RASHI_KEYWORDS = [
-  'רש"י', 'רשד"ה', 'רש"י ד"ה', 'ברש"י ד"ה', 'ברשד"ה', 'ברש"י', 'רש"י בד"ה', 'רשי', 'ברשי'
+  'רש"י', 'רשד"ה', 'רש"י ד"ה', 'ברש"י ד"ה', 'ברשד"ה', 'ברש"י', 'רש"י בד"ה', 'רשי', 'ברשי', 'פירש"י', 'פרש"י'
 ];
 
 // Includes both quoted and plain variants for תוספות citations, e.g. תוס' and תוס
@@ -68,6 +68,14 @@ const TOSAFOT_KEYWORDS = [
   'בתוס\' בד"ה', 'בתוס ד"ה', 'בתוס בד"ה', 'בתו\' ד"ה', 'תו\' ד"ה', 'תו\' בד"ה',
   'תו ד"ה', 'תו בד"ה'
 ];
+
+const getSecondaryPath = (targetSecondary: 'rashi' | 'tosafot', targetBookName: string) =>
+  targetSecondary === 'rashi'
+    ? `רש"י על ${targetBookName}.txt`
+    : `תוספות על ${targetBookName}.txt`;
+
+const getSecondaryBookLabel = (targetSecondary: 'rashi' | 'tosafot') =>
+  targetSecondary === 'rashi' ? 'רש"י' : 'תוספות';
 
 /**
  * Strips leading secondary source citation prefixes (e.g. רש"י ד"ה, תוספות ד"ה)
@@ -366,19 +374,27 @@ export function runLinkingParser(
         matchedSecondaryLineNum = secMatchRes.lineNum;
       }
 
-      // Search in primary source segment
-      srcMatchRes = searchLineInDoc(
-        srcDoc.lines,
-        srcSeg ? srcSeg.startLine : 1,
-        srcSeg ? srcSeg.endLine : srcDoc.lines.length,
-        cleanDh,
-        lineForDh || trimmedLine,
-        isExplicitDelimiter
-      );
-      matchedSourceLineNum = srcMatchRes.lineNum;
+      // Search in primary source segment unless the line explicitly targets a secondary source.
+      if (!explicitSecondaryTarget) {
+        srcMatchRes = searchLineInDoc(
+          srcDoc.lines,
+          srcSeg ? srcSeg.startLine : 1,
+          srcSeg ? srcSeg.endLine : srcDoc.lines.length,
+          cleanDh,
+          lineForDh || trimmedLine,
+          isExplicitDelimiter
+        );
+        matchedSourceLineNum = srcMatchRes.lineNum;
+      }
+
+      // If secondary source line was found and this is an explicit secondary citation,
+      // use the secondary source as the actual target instead of mapping back to the primary source.
+      if (explicitSecondaryTarget && matchedSecondaryLineNum) {
+        matchedSourceLineNum = matchedSecondaryLineNum;
+      }
 
       // If secondary source line was found, but primary source line wasn't matched directly:
-      if (matchedSecondaryLineNum && !matchedSourceLineNum) {
+      if (!explicitSecondaryTarget && matchedSecondaryLineNum && !matchedSourceLineNum) {
         let mappedPrimaryLine = previousLink?.line_index_2 || lastMatchedSrcLineIndex || (srcSeg ? srcSeg.startLine : 1);
         
         if (targetSecondary === 'rashi' && rashiLinks && rashiLinks.length > 0) {
@@ -410,7 +426,8 @@ export function runLinkingParser(
       }
 
       // If no direct match found, check fallback inheritance from previous link under same header
-      if (!matchedSourceLineNum && previousLink && previousLink.line_index_2) {
+      // Only inherit when this is not an explicit secondary citation.
+      if (!matchedSourceLineNum && !explicitSecondaryTarget && previousLink && previousLink.line_index_2) {
         matchedSourceLineNum = previousLink.line_index_2;
         isInherited = true;
       }
@@ -419,19 +436,26 @@ export function runLinkingParser(
       if (matchedSourceLineNum) {
         lastMatchedSrcLineIndex = matchedSourceLineNum;
         
-        // Build Hebrew reference (e.g. "בראשית פרק א, שורה 3")
-        const headerTitle = srcSeg ? srcSeg.headerTitle : config.targetBookName;
-        const heRef = `${config.targetBookName} - ${headerTitle}`;
+        const isSecondaryLink = Boolean(targetSecondary && matchedSecondaryLineNum);
+        const headerTitle = isSecondaryLink
+          ? (targetSecondary === 'rashi' ? rashiSeg?.headerTitle : tosafotSeg?.headerTitle) || config.targetBookName
+          : srcSeg ? srcSeg.headerTitle : config.targetBookName;
+        const heRef = isSecondaryLink
+          ? `${getSecondaryBookLabel(targetSecondary!)} - ${headerTitle}`
+          : `${config.targetBookName} - ${headerTitle}`;
+        const path_2 = isSecondaryLink
+          ? getSecondaryPath(targetSecondary!, config.targetBookName)
+          : `${config.targetBookName}.txt`;
 
         const newLink: OtzariaLink = {
           line_index_1: cLineIdx,
           line_index_2: matchedSourceLineNum,
           heRef_2: heRef,
-          path_2: `${config.targetBookName}.txt`,
+          path_2,
           connection_type: "commentary",
           secondaryTarget: targetSecondary || undefined,
           secondary_line_index: matchedSecondaryLineNum || undefined,
-          secondaryRef: targetSecondary ? `${targetSecondary === 'rashi' ? 'רש"י' : 'תוספות'} (${headerTitle})` : undefined,
+          secondaryRef: isSecondaryLink ? `${getSecondaryBookLabel(targetSecondary!)} (${headerTitle})` : undefined,
           isInherited,
           dhText: dhText || cleanDh
         };
