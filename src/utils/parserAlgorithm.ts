@@ -342,7 +342,7 @@ export function runLinkingParser(
         const validStart = Math.max(1, Math.min(start, docLines.length));
         const validEnd = Math.max(validStart, Math.min(end, docLines.length));
 
-        const segments = fullLineText.split(/\bו?כו'/i).map(s => s.trim()).filter(Boolean);
+        const segments = fullLineText.split(/\bפ?ו?כו[׳']?/i).map(s => s.trim()).filter(Boolean);
         if (segments.length <= 1) {
           const cleanDh = normalizeText(fullLineText);
           return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum);
@@ -402,16 +402,15 @@ export function runLinkingParser(
             scoreSegment(expSeg1Words, docLineNorm, docWords)
           );
 
-          const minSeg1Threshold = Math.max(0.4, seg1ExpectedWeight * 0.4);
+          const minSeg1Threshold = Math.max(0.3, seg1ExpectedWeight * 0.3);
           if (score1 < minSeg1Threshold) continue;
 
-          let seqScore = score1 * 2.5; // Anchor Weight bonus for First Anchor
-          let foundSeq2 = !seg2Words.length;
-          let foundSeq3 = !seg3Words.length;
+          let seqScore = score1 * 3.0; // Strong Anchor Weight bonus for First Anchor (beginning of citation)
 
           if (seg2Words.length > 0) {
             let bestSeg2Score = 0;
-            for (let nextL = lNum; nextL <= Math.min(docLines.length, lNum + 10); nextL++) {
+            // Expand window up to 50 lines for Talmudic passages containing כו'
+            for (let nextL = lNum; nextL <= Math.min(docLines.length, lNum + 50); nextL++) {
               const nextRaw = docLines[nextL - 1];
               if (!nextRaw) continue;
               const nextNorm = normalizeText(nextRaw);
@@ -419,26 +418,9 @@ export function runLinkingParser(
               const s2 = scoreSegment(seg2Words, nextNorm, nextWords);
               if (s2 > bestSeg2Score) {
                 bestSeg2Score = s2;
-                if (s2 >= 0.4) foundSeq2 = true;
               }
             }
-            seqScore += bestSeg2Score * 1.2;
-          }
-
-          if (seg3Words.length > 0 && foundSeq2) {
-            let bestSeg3Score = 0;
-            for (let nextL = lNum; nextL <= Math.min(docLines.length, lNum + 15); nextL++) {
-              const nextRaw = docLines[nextL - 1];
-              if (!nextRaw) continue;
-              const nextNorm = normalizeText(nextRaw);
-              const nextWords = nextNorm.split(/\s+/).filter(Boolean);
-              const s3 = scoreSegment(seg3Words, nextNorm, nextWords);
-              if (s3 > bestSeg3Score) {
-                bestSeg3Score = s3;
-                if (s3 >= 0.4) foundSeq3 = true;
-              }
-            }
-            seqScore += bestSeg3Score * 1.0;
+            seqScore += bestSeg2Score * 1.5;
           }
 
           let distPenalty = 0;
@@ -464,7 +446,7 @@ export function runLinkingParser(
           return { lineNum: bestLine, matchedCount: bestMatchedCount, expectedWeight };
         }
 
-        const cleanDh = normalizeText(fullLineText);
+        const cleanDh = normalizeText(segments[0]); // fallback to first segment instead of full text with כו'
         return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum);
       };
 
