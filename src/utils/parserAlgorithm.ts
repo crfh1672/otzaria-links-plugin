@@ -196,43 +196,86 @@ export function stripCategoryPrefix(text: string): string {
 }
 
 /**
+ * Interface for multi-segment Dibbur Hamatchil parsing results
+ */
+export interface DhSegmentsResult {
+  dhText: string;
+  cleanDh: string;
+  firstSegment: string;
+  subsequentSegments: string[];
+  isExplicitDelimiter: boolean;
+}
+
+/**
+ * Extracts Dibur Hamatchil segments (Segment 1 = Anchor Segment, Segments 2+ = Verification Segments)
+ */
+export function extractDiburHamatchilSegments(
+  line: string,
+  delimiter?: string
+): DhSegmentsResult {
+  if (!line || !line.trim()) {
+    return { dhText: '', cleanDh: '', firstSegment: '', subsequentSegments: [], isExplicitDelimiter: false };
+  }
+
+  const normLine = normalizeText(line, true);
+  if (!normLine) {
+    return { dhText: '', cleanDh: '', firstSegment: '', subsequentSegments: [], isExplicitDelimiter: false };
+  }
+
+  // 1. Custom delimiter
+  if (delimiter && delimiter.trim() && line.includes(delimiter.trim())) {
+    const parts = line.split(delimiter.trim()).map(p => p.trim()).filter(Boolean);
+    const first = parts[0] || '';
+    const subs = parts.slice(1);
+    return {
+      dhText: first,
+      cleanDh: normalizeText(first),
+      firstSegment: first,
+      subsequentSegments: subs,
+      isExplicitDelimiter: true
+    };
+  }
+
+  // 2. Keyword regex for כו' / וכו' / כו"ה / וכו"ה / כולי / וכולי
+  const kwSplitRegex = /\s+(?:ו?כו['"]?|ו?כו"ה|ו?כולי)\b/gi;
+  if (line.match(kwSplitRegex)) {
+    const parts = line.split(kwSplitRegex).map(p => p.trim()).filter(Boolean);
+    const first = parts[0] || '';
+    const subs = parts.slice(1);
+    return {
+      dhText: first,
+      cleanDh: normalizeText(first),
+      firstSegment: first,
+      subsequentSegments: subs,
+      isExplicitDelimiter: true
+    };
+  }
+
+  // Fallback
+  return {
+    dhText: line.trim(),
+    cleanDh: normalizeText(line),
+    firstSegment: line.trim(),
+    subsequentSegments: [],
+    isExplicitDelimiter: false
+  };
+}
+
+/**
  * Extracts potential Dibur Hamatchil search phrase from commentary line.
- * Strictly stops at the FIRST occurrence of כו' / וכו' or custom delimiter.
+ * Strictly stops at the FIRST occurrence of כו' / וכו' or custom delimiter as Anchor Segment.
  */
 export function extractDiburHamatchil(
   line: string,
   delimiter?: string
-): { dhText: string; cleanDh: string; isExplicitDelimiter: boolean } {
-  if (!line || !line.trim()) return { dhText: '', cleanDh: '', isExplicitDelimiter: false };
-
-  const normLine = normalizeText(line, true);
-  if (!normLine) return { dhText: '', cleanDh: '', isExplicitDelimiter: false };
-
-  let dhPart = '';
-  let explicit = false;
-
-  // 1. If custom delimiter defined, non-empty, and present in line
-  if (delimiter && delimiter.trim() && line.includes(delimiter.trim())) {
-    const trimmedDelim = delimiter.trim();
-    const idx = line.indexOf(trimmedDelim);
-    dhPart = line.substring(0, idx);
-    explicit = true;
-  }
-  // 2. Check for כו' / וכו' / כו"ה / וכו"ה / כולי / וכולי (strictly stop at FIRST occurrence)
-  else {
-    const kwRegex = /^(.*?)(?:\s+ו?כו['"]?|\s+ו?כו"ה|\s+ו?כולי|\bו?כו['"]|\bו?כו"ה)/i;
-    const match = line.match(kwRegex);
-    if (match && match[1] && match[1].trim()) {
-      dhPart = match[1];
-      explicit = true;
-    } else {
-      dhPart = line;
-      explicit = false;
-    }
-  }
-
-  const cleanDh = normalizeText(dhPart);
-  return { dhText: dhPart.trim(), cleanDh, isExplicitDelimiter: explicit };
+): { dhText: string; cleanDh: string; subsequentSegments: string[]; isExplicitDelimiter: boolean } {
+  const res = extractDiburHamatchilSegments(line, delimiter);
+  return {
+    dhText: res.firstSegment,
+    cleanDh: res.cleanDh,
+    subsequentSegments: res.subsequentSegments,
+    isExplicitDelimiter: res.isExplicitDelimiter
+  };
 }
 
 /**
@@ -316,25 +359,11 @@ export function runLinkingParser(
 
       const isBaadRegex = /^(?:שם\s+)?(?:או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד)(?:\s|$|[:.\-])/i;
       const isBaad = Boolean(normalizedPrefixLine.match(isBaadRegex));
-      const isJustSham = trimmedLine.startsWith('שם') && !normalizedPrefixLine.match(/^שם\s+(?:ד"ה|דה|בד"ה|בדה)(?:\s|$|[:.\-])/i);
-
-      // Handle Inheritance ("שם" - Step 5)
-      const shouldInheritLine = isBaad || isJustSham;
-      let isInherited = false;
-
-      // Extract DH search text using stripped line if secondary prefix present
-      const lineForDh = stripSecondaryPrefix(trimmedLine);
-      console.log(`  🔍 lineForDh='${lineForDh}' (after stripSecondaryPrefix)`);
-      // For secondary target explicit lines, if stripSecondaryPrefix returns empty, skip this line
-      if (explicitSecondaryTarget && !lineForDh.trim()) {
-        console.log(`  ⏭️  SKIP: explicit secondary but no DH text`);
-        continue; // No DH text after removing secondary prefix - skip this commentary line
-      }
-      // For non-explicit lines, use lineForDh or fallback to trimmedLine
+      const isJustSham = trimmedLine.startsWith('שם') && !normalizedPrefixLine.match(/^שם\s+(?:ד"ה|דה)/i);
       const lineForDhExtraction = lineForDh.trim() ? lineForDh : trimmedLine;
       console.log(`  🔎 lineForDhExtraction='${lineForDhExtraction}'`);
-      const { dhText, cleanDh, isExplicitDelimiter } = extractDiburHamatchil(lineForDhExtraction, config.diburHamatchilDelimiter);
-      console.log(`  📌 dhText='${dhText}', cleanDh='${cleanDh}', isExplicitDelimiter=${isExplicitDelimiter}`);
+      const { dhText, cleanDh, subsequentSegments, isExplicitDelimiter } = extractDiburHamatchil(lineForDhExtraction, config.diburHamatchilDelimiter);
+      console.log(`  📌 dhText='${dhText}', cleanDh='${cleanDh}', subs=[${subsequentSegments.join(' | ')}], isExplicitDelimiter=${isExplicitDelimiter}`);
 
       let matchedSourceLineNum: number | null = null;
       let matchedSecondaryLineNum: number | null = null;
@@ -348,7 +377,8 @@ export function runLinkingParser(
         fullLineText: string,
         isExplicit: boolean,
         idfMap?: Record<string, number>,
-        prevLineNum?: number | null
+        prevLineNum?: number | null,
+        subSegments?: string[]
       ): { lineNum: number | null; matchedCount: number; expectedWeight: number } => {
         if (!docLines || docLines.length === 0) {
           console.log(`    ⚠️ searchLineInDoc: docLines is empty!`);
@@ -371,7 +401,7 @@ export function runLinkingParser(
           0
         );
 
-        console.log(`    📊 searchLineInDoc: validStart=${validStart}, validEnd=${validEnd}, prevLineNum=${prevLineNum ?? 'none'}, coreSearchWords=[${coreSearchWords.join(',')}], isExplicit=${isExplicit}, expectedWeight=${expectedWeight.toFixed(2)}`);
+        console.log(`    📊 searchLineInDoc: validStart=${validStart}, validEnd=${validEnd}, prevLineNum=${prevLineNum ?? 'none'}, coreSearchWords=[${coreSearchWords.join(',')}], subSegmentsCount=${subSegments?.length || 0}, isExplicit=${isExplicit}, expectedWeight=${expectedWeight.toFixed(2)}`);
 
         const searchRanges = [
           { s: validStart, e: validEnd }
@@ -414,13 +444,13 @@ export function runLinkingParser(
             const enableFuzzy = config.useFuzzyMatching !== false;
             let currentMatchCount = 0;
 
-            // Check exact substring match
+            // Check exact substring match for Anchor Segment 1
             const normCore = normalizeText(coreSearchPhrase);
             const normExpCore = normalizeText(expCoreSearchPhrase);
             if (normCore && (docLineNorm.includes(normCore) || expDocLineNorm.includes(normExpCore))) {
               currentMatchCount = expectedWeight + 10;
             } else {
-              // Contiguous sequence score requiring match to start from first words of DH
+              // Contiguous sequence score requiring match to start from first words of DH Segment 1
               const calcDHSequenceScore = (dhWords: string[], targetWords: string[]): number => {
                 if (!dhWords || dhWords.length === 0 || !targetWords || targetWords.length === 0) return 0;
 
@@ -470,9 +500,25 @@ export function runLinkingParser(
               currentMatchCount = rawMatchCount * distPenalty;
             }
 
-          const minThreshold = isExplicit 
-            ? Math.min(1.5, Math.max(0.7, expectedWeight * 0.65))
-            : Math.min(1.5, Math.max(0.7, expectedWeight * 0.65));
+            const minThreshold = isExplicit 
+              ? Math.min(1.5, Math.max(0.7, expectedWeight * 0.65))
+              : Math.min(1.5, Math.max(0.7, expectedWeight * 0.65));
+
+            // Multi-segment verification: if Anchor Segment 1 matched on lNum, check if subsequent segments appear nearby
+            if (subSegments && subSegments.length > 0 && currentMatchCount >= minThreshold) {
+              let verifiedCount = 0;
+              const maxCheckLine = Math.min(lNum + 3, docLines.length);
+              const windowText = docLines.slice(lNum - 1, maxCheckLine).map(l => normalizeText(l)).join(' ');
+              for (const sub of subSegments) {
+                const normSub = normalizeText(sub);
+                if (normSub && normSub.length > 2 && windowText.includes(normSub)) {
+                  verifiedCount++;
+                }
+              }
+              if (verifiedCount > 0) {
+                currentMatchCount += (verifiedCount * 2.0); // Confidence boost
+              }
+            }
 
             if (currentMatchCount >= minThreshold) {
               const dist = Math.abs(lNum - range.s);
@@ -510,7 +556,8 @@ export function runLinkingParser(
           lineForDhExtraction,
           isExplicitDelimiter,
           rashiIdfMap,
-          previousLink ? previousLink.line_index_2 : null
+          previousLink ? previousLink.line_index_2 : null,
+          []
         );
         console.log(`  → Rashi search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
         matchedSecondaryLineNum = secMatchRes.lineNum;
@@ -524,7 +571,8 @@ export function runLinkingParser(
           lineForDhExtraction,
           isExplicitDelimiter,
           tosafotIdfMap,
-          previousLink ? previousLink.line_index_2 : null
+          previousLink ? previousLink.line_index_2 : null,
+          []
         );
         console.log(`  → Tosafot search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
         matchedSecondaryLineNum = secMatchRes.lineNum;
@@ -541,7 +589,8 @@ export function runLinkingParser(
           lineForDhExtraction,
           isExplicitDelimiter,
           srcIdfMap,
-          lastMatchedSrcLineIndex || (previousLink ? previousLink.line_index_2 : null)
+          lastMatchedSrcLineIndex || (previousLink ? previousLink.line_index_2 : null),
+          subsequentSegments
         );
         console.log(`  → PRIMARY source result: lineNum=${srcMatchRes.lineNum}, matchedCount=${srcMatchRes.matchedCount}`);
         matchedSourceLineNum = srcMatchRes.lineNum;
