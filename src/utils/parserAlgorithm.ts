@@ -73,9 +73,16 @@ const TOSAFOT_KEYWORDS = [
  * Strips leading secondary source citation prefixes (e.g. רש"י ד"ה, תוספות ד"ה)
  * to leave clean Dibur Hamatchil for searching secondary and primary texts.
  */
+export function normalizeHebrewQuotes(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/[׳’‘]/g, "'")
+    .replace(/[״“”]/g, '"');
+}
+
 export function stripSecondaryPrefix(line: string): string {
   if (!line) return '';
-  let cleaned = line.trim();
+  let cleaned = normalizeHebrewQuotes(line.trim());
   cleaned = cleaned.replace(/^(ברש"י\s+ד"ה|רש"י\s+ד"ה|רשד"ה|רשדה|ברשד"ה|ברשדה|ברש"י\s+בד"ה|רש"י\s+בד"ה|ברש"י|רש"י|רשי\s+ד"ה|רשי\s+דה|רשי|ברשי\s+ד"ה|ברשי\s+דה|ברשי|בתוספות\s+ד"ה|תוספות\s+ד"ה|בתוס'\s+ד"ה|תוס'\s+ד"ה|בתוס\s+ד"ה|תוס\s+ד"ה|בתוסות\s+ד"ה|תוסות\s+ד"ה|בתוד"ה|תוד"ה|בתוסות\s+בד"ה|תוספות\s+בד"ה|בתוס'\s+בד"ה|תוס'\s+בד"ה|בתוס\s+בד"ה|תוס\s+בד"ה|בתוס|תוס|בתוסות|תוסות|בתוספות|תוספות|בתוס'|תוס'|בתו'\s+ד"ה|תו'\s+ד"ה|תו'\s+בד"ה|תו\s+ד"ה|תו\s+בד"ה|שם\s+ד"ה|או"ד|באו"ד)\s*[:.\-]?\s*/i, '');
   cleaned = cleaned.replace(/^ד"ה\s*[:.\-]?\s*/i, '');
   return cleaned.trim();
@@ -214,15 +221,19 @@ export function runLinkingParser(
 
       const trimmedLine = cLineRaw.trim();
       const normCommLine = normalizeText(trimmedLine);
+      const normalizedPrefixLine = normalizeHebrewQuotes(trimmedLine);
 
       // Check routing to secondary sources (Step 4)
       let targetSecondary: 'rashi' | 'tosafot' | null = null;
+      let explicitSecondaryTarget = false;
 
-      if (RASHI_KEYWORDS.some(kw => trimmedLine.startsWith(kw))) {
+      if (RASHI_KEYWORDS.some(kw => normalizedPrefixLine.startsWith(kw))) {
         targetSecondary = 'rashi';
-      } else if (TOSAFOT_KEYWORDS.some(kw => trimmedLine.startsWith(kw))) {
+        explicitSecondaryTarget = true;
+      } else if (TOSAFOT_KEYWORDS.some(kw => normalizedPrefixLine.startsWith(kw))) {
         targetSecondary = 'tosafot';
-      } else if (trimmedLine.startsWith('שם ד"ה') || trimmedLine.startsWith('או"ד') || trimmedLine.startsWith('באו"ד')) {
+        explicitSecondaryTarget = true;
+      } else if (normalizedPrefixLine.startsWith('שם ד"ה') || normalizedPrefixLine.startsWith('או"ד') || normalizedPrefixLine.startsWith('באו"ד')) {
         targetSecondary = previousSecondaryType;
       }
 
@@ -379,7 +390,11 @@ export function runLinkingParser(
         }
 
         matchedSourceLineNum = mappedPrimaryLine;
-        isInherited = true;
+        // mark as inherited only when the source is derived due to a cross-reference fallback,
+        // not when the line is explicitly a secondary-target citation itself.
+        if (!explicitSecondaryTarget) {
+          isInherited = true;
+        }
       }
 
       // Rule for 'שם' inheritance
