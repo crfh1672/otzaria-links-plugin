@@ -93,29 +93,71 @@ const CollapsibleText = ({ text, isPrimary, links, targetType }: { text: string;
 
     if (highlightMap.size > 0) {
       const nodes: React.ReactNode[] = [];
-      for (let i = 0; i < words.length; i++) {
+      let i = 0;
+      while (i < words.length) {
         const isSpace = words[i].trim().length === 0;
-        if (isSpace) {
-          nodes.push(<React.Fragment key={i}>{words[i]}</React.Fragment>);
-        } else {
-          const actualWord = actualWords.find(aw => aw.arrayIndex === i);
-          if (actualWord && highlightMap.has(actualWord.wordIndex)) {
-            const linkIds = highlightMap.get(actualWord.wordIndex)!.join(' ');
-            // We use data-link-ids to allow the SVG drawer to find it
-            nodes.push(
-              <mark 
-                key={i} 
-                data-source-match-for={linkIds}
-                data-target-type={targetType || 'primary'}
-                id={`source-match-${linkIds.split(' ')[0]}-${actualWord.wordIndex}`}
-                className="bg-yellow-200/60 dark:bg-yellow-500/30 border border-gray-400 dark:border-gray-600 rounded px-0.5 mx-0.5"
-              >
-                {words[i]}
-              </mark>
-            );
-          } else {
-            nodes.push(<React.Fragment key={i}>{words[i]}</React.Fragment>);
+        const actualWord = !isSpace ? actualWords.find(aw => aw.arrayIndex === i) : null;
+        const isHighlighted = actualWord ? highlightMap.has(actualWord.wordIndex) : false;
+
+        if (isHighlighted) {
+          const seqWords: string[] = [];
+          const linkIdsSet = new Set<string>();
+          let j = i;
+
+          while (j < words.length) {
+            const subIsSpace = words[j].trim().length === 0;
+            const subActualWord = !subIsSpace ? actualWords.find(aw => aw.arrayIndex === j) : null;
+            const subIsHighlighted = subActualWord ? highlightMap.has(subActualWord.wordIndex) : false;
+
+            if (subIsHighlighted) {
+              seqWords.push(words[j]);
+              highlightMap.get(subActualWord!.wordIndex)!.forEach(id => linkIdsSet.add(id));
+              j++;
+            } else if (subIsSpace) {
+              let nextHighlighted = false;
+              let peek = j + 1;
+              while (peek < words.length) {
+                const peekIsSpace = words[peek].trim().length === 0;
+                if (!peekIsSpace) {
+                  const peekActualWord = actualWords.find(aw => aw.arrayIndex === peek);
+                  if (peekActualWord && highlightMap.has(peekActualWord.wordIndex)) {
+                    nextHighlighted = true;
+                  }
+                  break;
+                }
+                peek++;
+              }
+
+              if (nextHighlighted) {
+                seqWords.push(words[j]);
+                j++;
+              } else {
+                break;
+              }
+            } else {
+              break;
+            }
           }
+
+          const linkIdsStr = Array.from(linkIdsSet).join(' ');
+          const firstHighlightWord = actualWords.find(aw => aw.arrayIndex === i);
+          const uniqueId = firstHighlightWord ? `source-match-${linkIdsStr.split(' ')[0]}-${firstHighlightWord.wordIndex}` : `source-match-${linkIdsStr.split(' ')[0]}-${i}`;
+
+          nodes.push(
+            <mark
+              key={`seq-${i}`}
+              data-source-match-for={linkIdsStr}
+              data-target-type={targetType || 'primary'}
+              id={uniqueId}
+              className="bg-yellow-200/60 dark:bg-yellow-500/30 border border-gray-400 dark:border-gray-600 rounded px-1.5 py-0.5 mx-0.5"
+            >
+              {seqWords.join('')}
+            </mark>
+          );
+          i = j;
+        } else {
+          nodes.push(<React.Fragment key={i}>{words[i]}</React.Fragment>);
+          i++;
         }
       }
       contentNodes = nodes;
@@ -202,11 +244,20 @@ export const EditMode: React.FC<EditModeProps> = ({
     const commMarks = containerRef.current.querySelectorAll('mark[id^="comm-match-"]');
     commMarks.forEach(commMark => {
       const commId = commMark.id; 
-      const lineIdx1 = commId.split('-')[2];
+      const lineIdx1Str = commId.split('-')[2];
+      const lineIdx1 = parseInt(lineIdx1Str, 10);
+
+      // Do not draw connecting line for inherited links
+      const linkObj = session.links.find(l => l.line_index_1 === lineIdx1);
+      if (linkObj?.isInherited) {
+        return;
+      }
       
       const sourceMarks = containerRef.current!.querySelectorAll(`mark[data-source-match-for~="${lineIdx1}"]`);
       if (sourceMarks.length > 0) {
-        const commRect = commMark.getBoundingClientRect();
+        const commBox = containerRef.current!.querySelector(`#comm-box-${lineIdx1}`);
+        if (!commBox) return;
+        const commBoxRect = commBox.getBoundingClientRect();
         
         let srcTop = Infinity, srcBottom = -Infinity, srcLeft = Infinity, srcRight = -Infinity;
         sourceMarks.forEach(m => {
@@ -217,9 +268,9 @@ export const EditMode: React.FC<EditModeProps> = ({
            srcRight = Math.max(srcRight, r.right);
         });
 
-        // Draw from commentary mark (left side) to source mark (right side) since commentary is on the right and source is on the left
-        const x1 = commRect.left - containerRect.left;
-        const y1 = commRect.top + commRect.height / 2 - containerRect.top;
+        // Draw from the commentary box container itself (left side in RTL) to the matched words in the source (right side)
+        const x1 = commBoxRect.left - containerRect.left;
+        const y1 = commBoxRect.top + commBoxRect.height / 2 - containerRect.top;
 
         const x2 = srcRight - containerRect.left;
         const y2 = (srcTop + srcBottom) / 2 - containerRect.top;
@@ -234,7 +285,7 @@ export const EditMode: React.FC<EditModeProps> = ({
       }
     });
     setSvgLines(newLines);
-  }, [session.links]);
+  }, [session.links, dhHighlights]);
 
   useEffect(() => {
     const t = setTimeout(updateSvgLines, 100);
@@ -614,6 +665,7 @@ export const EditMode: React.FC<EditModeProps> = ({
 
     return (
       <div
+        id={`comm-box-${lineIdx1}`}
         key={`comm-${lineIdx1}`}
         draggable
         onDragStart={() => handleDragStart(lineIdx1)}
@@ -642,7 +694,7 @@ export const EditMode: React.FC<EditModeProps> = ({
               <button
                 type="button"
                 onClick={() => handleToggleLinkApproval(lineIdx1)}
-                className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-xl font-bold border transition-colors ${
+                className={`inline-flex items-center justify-center p-1.5 rounded-xl font-bold border transition-colors ${
                   (linkObj.status === 'approved' || !linkObj.status)
                     ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300'
                     : 'bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300'
@@ -650,7 +702,7 @@ export const EditMode: React.FC<EditModeProps> = ({
                 title="לחץ לשינוי סטטוס אישור הקישור"
               >
                 <CheckCircle2 className={`w-3.5 h-3.5 ${(linkObj.status === 'approved' || !linkObj.status) ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'}`} />
-                <span>{(linkObj.status === 'approved' || !linkObj.status) ? 'מאושר' : 'ממתין לבדיקה'}</span>
+                
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono ${
                   (linkObj.confidence ?? 85) >= 80
                     ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
@@ -905,11 +957,11 @@ export const EditMode: React.FC<EditModeProps> = ({
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setIsUnlinkedDrawerOpen(!isUnlinkedDrawerOpen)}
-                  className="px-2.5 py-1 text-xs font-bold bg-rose-100 dark:bg-rose-950/80 text-rose-900 dark:text-rose-100 hover:bg-rose-200 dark:hover:bg-rose-900 rounded-xl transition-colors flex items-center gap-1"
+                  className="p-1.5 text-xs font-bold bg-rose-100 dark:bg-rose-950/80 text-rose-900 dark:text-rose-100 hover:bg-rose-200 dark:hover:bg-rose-900 rounded-xl transition-colors inline-flex items-center justify-center"
                   title="הצג שורות לא מקושרות"
                 >
                   <Eye className="w-3.5 h-3.5" />
-                  <span>{isUnlinkedDrawerOpen ? 'סגור' : 'הצג'}</span>
+                  
                 </button>
 
                 
