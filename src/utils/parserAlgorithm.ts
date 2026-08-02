@@ -1008,7 +1008,47 @@ export function runLinkingParser(
 /**
  * Formats commentary line text with <b>...</b> applied based on DHHighlight configuration
  */
-export function formatLineWithDH(line: string, highlight?: DHHighlight): string {
+export function findSourceMatchRange(sourceLine: string, dhText: string): DHHighlight | null {
+  if (!sourceLine || !dhText) return null;
+  const targetWords = normalizeText(stripHtmlTags(sourceLine)).split(/\s+/).filter(Boolean);
+  const sourceWords = normalizeText(stripHtmlTags(dhText)).split(/\s+/).filter(Boolean);
+  if (targetWords.length === 0 || sourceWords.length === 0) return null;
+
+  let maxSeqScore = 0;
+  let bestStart = -1;
+  let bestCount = 0;
+
+  for (let startWIdx = 0; startWIdx < Math.min(3, sourceWords.length); startWIdx++) {
+    for (let docWIdx = 0; docWIdx < targetWords.length; docWIdx++) {
+      let k = 0;
+      let seqScore = 0;
+      while (
+        startWIdx + k < sourceWords.length &&
+        docWIdx + k < targetWords.length
+      ) {
+        const w1 = sourceWords[startWIdx + k];
+        const w2 = targetWords[docWIdx + k];
+        const sim = getWordSimilarity(w1, w2, true);
+        if (sim <= 0) break;
+        const wWeight = getCombinedWordWeight(w1, true); // No IDF map needed for simple UI highlight
+        seqScore += sim * wWeight;
+        k++;
+      }
+      if (seqScore > maxSeqScore && k > 0) {
+        maxSeqScore = seqScore;
+        bestStart = docWIdx;
+        bestCount = k;
+      }
+    }
+  }
+
+  if (bestStart !== -1 && maxSeqScore >= 0.5) {
+    return { wordStart: bestStart, wordCount: bestCount };
+  }
+  return null;
+}
+
+export function formatLineWithDH(line: string, highlight?: DHHighlight, customId?: string, isSource?: boolean, forExport?: boolean): string {
   if (!line || !line.trim()) return line || '';
   if (!highlight || highlight.wordCount <= 0) return line;
 
@@ -1037,8 +1077,18 @@ export function formatLineWithDH(line: string, highlight?: DHHighlight): string 
 
     if (startArrIdx === undefined || endArrIdx === undefined) return line;
 
-    words[startArrIdx] = '<b>' + words[startArrIdx];
-    words[endArrIdx] = words[endArrIdx] + '</b>';
+    if (forExport) {
+      words[startArrIdx] = '<b>' + words[startArrIdx];
+      words[endArrIdx] = words[endArrIdx] + '</b>';
+    } else {
+      const spanId = customId ? ` id="${customId}"` : '';
+      const spanClass = isSource 
+        ? ` class="source-match-highlight bg-yellow-200/60 dark:bg-yellow-500/30 border border-gray-400 dark:border-gray-600 rounded px-0.5 mx-0.5"`
+        : ` class="dh-highlight font-bold bg-yellow-200/60 dark:bg-yellow-500/30 border border-gray-400 dark:border-gray-600 rounded px-0.5 mx-0.5"`;
+
+      words[startArrIdx] = `<mark${spanId}${spanClass}>` + words[startArrIdx];
+      words[endArrIdx] = words[endArrIdx] + '</mark>';
+    }
 
     return words.join('');
   } catch (e) {

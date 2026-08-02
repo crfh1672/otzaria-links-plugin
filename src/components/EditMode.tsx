@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { SessionState, OtzariaLink, DHHighlight } from '../types';
 import { formatLineWithDH, parseDocumentSegments } from '../utils/parserAlgorithm';
 import { EditLinkModal } from './EditLinkModal';
@@ -26,22 +26,136 @@ import {
 } from 'lucide-react';
 import { HeaderSegment } from '../utils/parserAlgorithm';
 
-const CollapsibleText = ({ text, isPrimary }: { text: string; isPrimary: boolean }) => {
+import { findSourceMatchRange } from '../utils/parserAlgorithm';
+
+const getTargetColors = (target?: 'rashi' | 'tosafot' | 'primary' | string) => {
+  switch (target) {
+    case 'rashi':
+      return {
+        text: 'text-orange-800 dark:text-orange-300',
+        bgTitle: 'bg-orange-100 dark:bg-orange-950/60',
+        bgPanel: 'bg-orange-50/40 dark:bg-orange-950/20',
+        borderPanel: 'border-orange-100 dark:border-orange-900/30',
+        lineStroke: '#f97316' // orange-500
+      };
+    case 'tosafot':
+      return {
+        text: 'text-purple-800 dark:text-purple-300',
+        bgTitle: 'bg-purple-100 dark:bg-purple-950/60',
+        bgPanel: 'bg-purple-50/40 dark:bg-purple-950/20',
+        borderPanel: 'border-purple-100 dark:border-purple-900/30',
+        lineStroke: '#a855f7' // purple-500
+      };
+    default:
+      return {
+        text: 'text-emerald-800 dark:text-emerald-300',
+        bgTitle: 'bg-emerald-100 dark:bg-emerald-950/60',
+        bgPanel: 'bg-emerald-50/40 dark:bg-emerald-950/20',
+        borderPanel: 'border-emerald-100 dark:border-emerald-900/30',
+        lineStroke: '#10b981' // emerald-500
+      };
+  }
+};
+
+
+const CollapsibleText = ({ text, isPrimary, links, targetType }: { text: string; isPrimary: boolean; links?: OtzariaLink[]; targetType?: 'rashi' | 'tosafot' | 'primary' | string }) => {
   const [isExpanded, setIsExpanded] = useState(isPrimary);
 
+  // Parse words and determine highlights if links are provided
+  let contentNodes: React.ReactNode = text;
+  
+  if (links && links.length > 0) {
+    const words = text.split(/(\s+)/);
+    const actualWords: { text: string; wordIndex: number; arrayIndex: number }[] = [];
+    let currentWordIdx = 0;
+    
+    for (let i = 0; i < words.length; i++) {
+      if (words[i].trim().length > 0) {
+        actualWords.push({ text: words[i], wordIndex: currentWordIdx, arrayIndex: i });
+        currentWordIdx++;
+      }
+    }
+
+    // Determine which words are highlighted by which link
+    const highlightMap = new Map<number, string[]>(); // wordIndex -> array of link line_index_1
+    links.forEach(link => {
+      if (link.dhText) {
+        const range = findSourceMatchRange(text, link.dhText);
+        if (range) {
+          for (let i = 0; i < range.wordCount; i++) {
+            const idx = range.wordStart + i;
+            if (!highlightMap.has(idx)) highlightMap.set(idx, []);
+            highlightMap.get(idx)!.push(link.line_index_1.toString());
+          }
+        }
+      }
+    });
+
+    if (highlightMap.size > 0) {
+      const nodes: React.ReactNode[] = [];
+      for (let i = 0; i < words.length; i++) {
+        const isSpace = words[i].trim().length === 0;
+        if (isSpace) {
+          nodes.push(<React.Fragment key={i}>{words[i]}</React.Fragment>);
+        } else {
+          const actualWord = actualWords.find(aw => aw.arrayIndex === i);
+          if (actualWord && highlightMap.has(actualWord.wordIndex)) {
+            const linkIds = highlightMap.get(actualWord.wordIndex)!.join(' ');
+            // We use data-link-ids to allow the SVG drawer to find it
+            nodes.push(
+              <mark 
+                key={i} 
+                data-source-match-for={linkIds}
+                data-target-type={targetType || 'primary'}
+                id={`source-match-${linkIds.split(' ')[0]}-${actualWord.wordIndex}`}
+                className="bg-yellow-200/60 dark:bg-yellow-500/30 border border-gray-400 dark:border-gray-600 rounded px-0.5 mx-0.5"
+              >
+                {words[i]}
+              </mark>
+            );
+          } else {
+            nodes.push(<React.Fragment key={i}>{words[i]}</React.Fragment>);
+          }
+        }
+      }
+      contentNodes = nodes;
+    }
+  }
+
   if (isPrimary || !text || text.length <= 150) {
+    const colors = getTargetColors(targetType);
     return (
-      <p className="text-sm md:text-base font-sans leading-relaxed text-[var(--color-on-surface)] bg-emerald-50/40 dark:bg-emerald-950/20 p-3.5 md:p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
-        {text}
+      <p className={`text-sm md:text-base font-sans leading-relaxed text-[var(--color-on-surface)] ${colors.bgPanel} p-3.5 md:p-4 rounded-xl border ${colors.borderPanel}`}>
+        {contentNodes}
       </p>
     );
   }
 
+  const colors = getTargetColors(targetType);
   return (
-    <div className="bg-emerald-50/40 dark:bg-emerald-950/20 p-3.5 md:p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30 space-y-2">
+    <div className={`${colors.bgPanel} p-3.5 md:p-4 rounded-xl border ${colors.borderPanel} space-y-2`}>
       <p className={`text-sm md:text-base font-sans leading-relaxed text-[var(--color-on-surface)] ${!isExpanded ? 'line-clamp-3' : ''}`}>
-        {text}
+        {contentNodes}
       </p>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="text-xs text-[var(--color-primary)] hover:underline font-bold"
+      >
+        {isExpanded ? 'צמצם' : 'הרחב'}
+      </button>
+    </div>
+  );
+};
+
+
+const CollapsibleCommentary = ({ html }: { html: string }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  return (
+    <div className="space-y-1">
+      <div
+        className={`text-sm md:text-base font-sans leading-relaxed text-[var(--color-on-surface)] [&_b]:font-bold [&_b]:text-[var(--color-primary)] [&_b]:bg-[var(--color-primary-subtle)] [&_b]:px-1.5 [&_b]:py-0.5 [&_b]:rounded-md ${!isExpanded ? 'line-clamp-2' : ''}`}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="text-xs text-[var(--color-primary)] hover:underline font-bold"
@@ -58,6 +172,7 @@ interface EditModeProps {
   isNavDrawerOpen?: boolean;
   onCloseNavDrawer?: () => void;
   onToggleNavDrawer?: () => void;
+  sortMode?: 'book_order' | 'score_asc' | 'score_desc';
 }
 
 export const EditMode: React.FC<EditModeProps> = ({
@@ -65,16 +180,87 @@ export const EditMode: React.FC<EditModeProps> = ({
   onUpdateSession,
   isNavDrawerOpen,
   onCloseNavDrawer,
-  onToggleNavDrawer
+  onToggleNavDrawer,
+  sortMode = 'book_order'
 }) => {
   const [editingCommLineIdx, setEditingCommLineIdx] = useState<number | null>(null);
   const [draggedCommLineIdx, setDraggedCommLineIdx] = useState<number | null>(null);
 
-  // Pagination & Filtering state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(40);
+  // Filtering & Drawer state
   const [sourceSearchQuery, setSourceSearchQuery] = useState('');
-  const [filterMode, setFilterMode] = useState<'all' | 'linked' | 'unlinked' | 'high_confidence' | 'low_confidence' | 'pending'>('all');
+  const [drawerTab, setDrawerTab] = useState<'nav' | 'search'>('nav');
+
+  // Connection Lines State
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [svgLines, setSvgLines] = useState<{ id: string; x1: number; y1: number; x2: number; y2: number; color?: string }[]>([]);
+
+  const updateSvgLines = useCallback(() => {
+    if (!containerRef.current) return;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const newLines: { id: string; x1: number; y1: number; x2: number; y2: number; color?: string }[] = [];
+
+    const commMarks = containerRef.current.querySelectorAll('mark[id^="comm-match-"]');
+    commMarks.forEach(commMark => {
+      const commId = commMark.id; 
+      const lineIdx1 = commId.split('-')[2];
+      
+      const sourceMarks = containerRef.current!.querySelectorAll(`mark[data-source-match-for~="${lineIdx1}"]`);
+      if (sourceMarks.length > 0) {
+        const commRect = commMark.getBoundingClientRect();
+        
+        let srcTop = Infinity, srcBottom = -Infinity, srcLeft = Infinity, srcRight = -Infinity;
+        sourceMarks.forEach(m => {
+           const r = m.getBoundingClientRect();
+           srcTop = Math.min(srcTop, r.top);
+           srcBottom = Math.max(srcBottom, r.bottom);
+           srcLeft = Math.min(srcLeft, r.left);
+           srcRight = Math.max(srcRight, r.right);
+        });
+
+        // Draw from commentary mark (left side) to source mark (right side) since commentary is on the right and source is on the left
+        const x1 = commRect.left - containerRect.left;
+        const y1 = commRect.top + commRect.height / 2 - containerRect.top;
+
+        const x2 = srcRight - containerRect.left;
+        const y2 = (srcTop + srcBottom) / 2 - containerRect.top;
+
+        const targetType = sourceMarks[0].getAttribute('data-target-type');
+        const color = getTargetColors(targetType || 'primary').lineStroke;
+
+        newLines.push({
+          id: `line-${lineIdx1}`,
+          x1, y1, x2, y2, color
+        });
+      }
+    });
+    setSvgLines(newLines);
+  }, [session.links]);
+
+  useEffect(() => {
+    const t = setTimeout(updateSvgLines, 100);
+    window.addEventListener('resize', updateSvgLines);
+    
+    let observer: ResizeObserver | null = null;
+    if (containerRef.current) {
+      observer = new ResizeObserver(() => {
+        updateSvgLines();
+      });
+      // Observe all children (the cards) to react to expansions
+      Array.from(containerRef.current.children).forEach(child => {
+        if (child.tagName !== 'svg') {
+          observer!.observe(child);
+        }
+      });
+    }
+
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('resize', updateSvgLines);
+      if (observer) {
+        observer.disconnect();
+      }
+    };
+  }, [updateSvgLines, sortMode]);
 
   // Navigation Drawer & Section Heading Highlight state
   const [highlightedHeaderId, setHighlightedHeaderId] = useState<string | null>(null);
@@ -153,7 +339,7 @@ export const EditMode: React.FC<EditModeProps> = ({
     config
   } = session;
 
-  const rashiLinksBySecondaryLine = React.useMemo(() => {
+  const rashiLinksBySecondaryLine = useMemo(() => {
     const map: Record<number, OtzariaLink[]> = {};
     links.forEach(link => {
       if (link.secondaryTarget === 'rashi' && link.secondary_line_index) {
@@ -166,11 +352,11 @@ export const EditMode: React.FC<EditModeProps> = ({
     return map;
   }, [links]);
 
-  const rashiLinksWithoutLine = React.useMemo(() => {
+  const rashiLinksWithoutLine = useMemo(() => {
     return links.filter(link => link.secondaryTarget === 'rashi' && !link.secondary_line_index);
   }, [links]);
 
-  const tosafotLinksBySecondaryLine = React.useMemo(() => {
+  const tosafotLinksBySecondaryLine = useMemo(() => {
     const map: Record<number, OtzariaLink[]> = {};
     links.forEach(link => {
       if (link.secondaryTarget === 'tosafot' && link.secondary_line_index) {
@@ -183,17 +369,17 @@ export const EditMode: React.FC<EditModeProps> = ({
     return map;
   }, [links]);
 
-  const tosafotLinksWithoutLine = React.useMemo(() => {
+  const tosafotLinksWithoutLine = useMemo(() => {
     return links.filter(link => link.secondaryTarget === 'tosafot' && !link.secondary_line_index);
   }, [links]);
 
   // Set of linked commentary line indices (1-based)
-  const linkedCommLineIndices = React.useMemo(() => {
+  const linkedCommLineIndices = useMemo(() => {
     return new Set(links.map(l => l.line_index_1));
   }, [links]);
 
   // Unlinked commentary lines
-  const unlinkedCommLines = React.useMemo(() => {
+  const unlinkedCommLines = useMemo(() => {
     const unlinked: { lineIndex1: number; text: string }[] = [];
     commentaryLines.forEach((line, idx) => {
       const lineIdx1 = idx + 1; // 1-based
@@ -207,11 +393,11 @@ export const EditMode: React.FC<EditModeProps> = ({
     return unlinked;
   }, [commentaryLines, linkedCommLineIndices]);
 
-  const commentarySegments = React.useMemo(() => {
+  const commentarySegments = useMemo(() => {
     return parseDocumentSegments(commentaryLines.join('\n')).segments;
   }, [commentaryLines]);
 
-  const filteredDrawerSegments = React.useMemo(() => {
+  const filteredDrawerSegments = useMemo(() => {
     if (!drawerSearchQuery.trim()) return commentarySegments;
     const q = drawerSearchQuery.toLowerCase().trim();
     return commentarySegments.filter(seg =>
@@ -224,16 +410,12 @@ export const EditMode: React.FC<EditModeProps> = ({
     // Find target line index for the segment
     const targetLineIdx1 = seg.headerLineIndex > 0 ? seg.headerLineIndex : seg.startLine;
 
-    // Find target index in filteredCommentaryIndices
-    let targetItemIdx = filteredCommentaryIndices.findIndex(lineArrIdx => (lineArrIdx + 1) >= seg.startLine);
-    if (targetItemIdx === -1 && filteredCommentaryIndices.length > 0) {
+    // Find target index in sortedCommentaryIndices
+    let targetItemIdx = sortedCommentaryIndices.findIndex(lineArrIdx => (lineArrIdx + 1) >= seg.startLine);
+    if (targetItemIdx === -1 && sortedCommentaryIndices.length > 0) {
       targetItemIdx = 0;
     }
 
-    if (targetItemIdx !== -1) {
-      const targetPage = Math.floor(targetItemIdx / pageSize) + 1;
-      setCurrentPage(targetPage);
-    }
 
     const headerId = seg.headerLineIndex > 0 ? `header-${seg.headerLineIndex}` : `header-start-${seg.startLine}`;
     setHighlightedHeaderId(headerId);
@@ -254,63 +436,53 @@ export const EditMode: React.FC<EditModeProps> = ({
     }
   };
 
-  // Filtered commentary line array indices
-  const filteredCommentaryIndices = React.useMemo(() => {
+  
+  const sortedCommentaryIndices = useMemo(() => {
     const indices: number[] = [];
     const q = sourceSearchQuery.toLowerCase().trim();
 
     commentaryLines.forEach((line, idx) => {
       const commLineIdx1 = idx + 1;
-
       if (!line.trim() || /<h[1-6][^>]*>.*<\/h[1-6]>/i.test(line) || /^#{1,6}\s+/.test(line)) {
         return;
       }
-
+      
       const link = links.find(l => l.line_index_1 === commLineIdx1);
 
-      if (filterMode === 'linked' && !link) return;
-      if (filterMode === 'unlinked' && link) return;
-      if (filterMode === 'high_confidence') {
-        if (!link || (link.confidence ?? 85) < 80) return;
-      }
-      if (filterMode === 'low_confidence') {
-        if (!link || (link.confidence ?? 85) >= 80) return;
-      }
-      if (filterMode === 'pending') {
-        if (!link || link.status === 'approved') return;
-      }
-
       if (q) {
-        const lineMatches = line.toLowerCase().includes(q) || commLineIdx1.toString() === q;
+        let lineMatches = line.toLowerCase().includes(q) || commLineIdx1.toString() === q;
         let targetMatches = false;
-
-        if (link && !link.secondaryTarget && sourceLines[link.line_index_2 - 1]) {
-          targetMatches = sourceLines[link.line_index_2 - 1].toLowerCase().includes(q);
+        if (link) {
+          const targetLine = link.secondaryTarget === 'rashi' 
+            ? rashiLines[link.secondary_line_index! - 1]
+            : link.secondaryTarget === 'tosafot'
+              ? tosafotLines[link.secondary_line_index! - 1]
+              : sourceLines[link.line_index_2 - 1];
+          if (targetLine && targetLine.toLowerCase().includes(q)) targetMatches = true;
         }
-
         if (!lineMatches && !targetMatches) return;
       }
-
-      indices.push(idx);
+      
+      indices.push(idx); // idx is 0-based index
     });
 
-    return indices;
-  }, [commentaryLines, links, filterMode, sourceSearchQuery, sourceLines]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredCommentaryIndices.length / pageSize));
-
-  React.useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(1);
+    if (sortMode !== 'book_order') {
+       indices.sort((idxA, idxB) => {
+           const a = idxA + 1;
+           const b = idxB + 1;
+           const linkA = links.find(l => l.line_index_1 === a);
+           const linkB = links.find(l => l.line_index_1 === b);
+           const scoreA = linkA ? (linkA.confidence ?? 85) : 0;
+           const scoreB = linkB ? (linkB.confidence ?? 85) : 0;
+           if (sortMode === 'score_asc') return scoreA - scoreB;
+           return scoreB - scoreA;
+       });
     }
-  }, [filteredCommentaryIndices.length, totalPages, currentPage]);
 
-  const currentPageIndices = React.useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredCommentaryIndices.slice(start, start + pageSize);
-  }, [filteredCommentaryIndices, currentPage, pageSize]);
+    return indices;
+  }, [commentaryLines, links, sourceSearchQuery, sortMode, sourceLines, rashiLines, tosafotLines]);
 
-  const currentPageGroups = React.useMemo(() => {
+  const groupedCommentary = useMemo(() => {
     const groups: {
       targetKey: string;
       commIndices: number[];
@@ -321,7 +493,7 @@ export const EditMode: React.FC<EditModeProps> = ({
       primaryLineIndex?: number;
     }[] = [];
 
-    currentPageIndices.forEach(idx => {
+    sortedCommentaryIndices.forEach(idx => {
       const commLineIdx1 = idx + 1;
       const linkObj = links.find(l => l.line_index_1 === commLineIdx1);
 
@@ -347,7 +519,7 @@ export const EditMode: React.FC<EditModeProps> = ({
     });
 
     return groups;
-  }, [currentPageIndices, links]);
+  }, [sortedCommentaryIndices, links]);
 
   // Update DH Highlight word count (+1 or -1)
   const handleAdjustDH = (commLineIdx1: number, delta: number) => {
@@ -438,7 +610,7 @@ export const EditMode: React.FC<EditModeProps> = ({
       bgStyle = "bg-[var(--color-primary-subtle)] text-[var(--color-on-surface)] border-[var(--color-outline)]";
     }
 
-    const formattedHtml = formatLineWithDH(rawLineText, highlight);
+    const formattedHtml = formatLineWithDH(rawLineText, highlight, `comm-match-${lineIdx1}`, false);
 
     return (
       <div
@@ -551,12 +723,21 @@ export const EditMode: React.FC<EditModeProps> = ({
           </div>
         </div>
 
+
         {/* Text with <b> highlighting */}
-        <div
-          className="text-sm md:text-base font-sans leading-relaxed text-[var(--color-on-surface)] [&_b]:font-bold [&_b]:text-[var(--color-primary)] [&_b]:bg-[var(--color-primary-subtle)] [&_b]:px-1.5 [&_b]:py-0.5 [&_b]:rounded-md"
-          dangerouslySetInnerHTML={{ __html: formattedHtml }}
-        />
+        {(() => {
+          if (!rawLineText || rawLineText.length <= 100) {
+            return (
+              <div
+                className="text-sm md:text-base font-sans leading-relaxed text-[var(--color-on-surface)] [&_b]:font-bold [&_b]:text-[var(--color-primary)] [&_b]:bg-[var(--color-primary-subtle)] [&_b]:px-1.5 [&_b]:py-0.5 [&_b]:rounded-md"
+                dangerouslySetInnerHTML={{ __html: formattedHtml }}
+              />
+            );
+          }
+          return <CollapsibleCommentary html={formattedHtml} />;
+        })()}
       </div>
+
     );
   };
 
@@ -569,7 +750,7 @@ export const EditMode: React.FC<EditModeProps> = ({
 
     const seg = commentarySegments[segIndex];
 
-    const isFirstGroupForSegOnPage = currentPageGroups.findIndex(
+    const isFirstGroupForSegOnPage = groupedCommentary.findIndex(
       g => g.commIndices[0] >= seg.startLine && g.commIndices[0] <= seg.endLine
     ) === gIdx;
 
@@ -612,140 +793,30 @@ export const EditMode: React.FC<EditModeProps> = ({
 
   return (
     <div className="space-y-6 pb-24 text-right" dir="rtl">
-      {/* Search & Filter Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-outline-variant)] shadow-2xs">
-        {/* Search input bar */}
-        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 flex-1 min-w-[240px]">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              value={sourceSearchQuery}
-              onChange={e => {
-                setSourceSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
-              placeholder="סינון/חיפוש בשורות מקור או פירוש..."
-              className="w-full pl-3 pr-4 py-2 text-sm bg-[var(--color-surface-container-low)] border border-[var(--color-outline)] rounded-xl text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] font-sans"
-            />
-          </div>
-
-          {commentarySegments.length > 0 && onToggleNavDrawer && (
-            <button
-              onClick={onToggleNavDrawer}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-[var(--color-surface-container-low)] hover:bg-[var(--color-primary-subtle)] border border-[var(--color-outline)] text-[var(--color-primary)] rounded-xl transition-colors shrink-0"
-              title="פתח סרגל ניווט נשלף עם כל הכותרות"
-            >
-              <ListTree className="w-4 h-4" />
-              <span>כותרות ופרקים ({commentarySegments.length})</span>
-            </button>
-          )}
-        </div>
-
-        {/* Filter mode toggles */}
-        <div className="flex flex-wrap items-center gap-1.5 bg-[var(--color-surface-container-low)] p-1 rounded-xl border border-[var(--color-outline)]">
-          <button
-            onClick={() => {
-              setFilterMode('all');
-              setCurrentPage(1);
-            }}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${
-              filterMode === 'all'
-                ? 'bg-[var(--color-primary)] text-[var(--color-on-primary)]'
-                : 'text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)]'
-            }`}
-          >
-            הצג הכל
-          </button>
-          <button
-            onClick={() => {
-              setFilterMode('high_confidence');
-              setCurrentPage(1);
-            }}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${
-              filterMode === 'high_confidence'
-                ? 'bg-emerald-600 text-white'
-                : 'text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
-            }`}
-          >
-            ודאות גבוהה (≥80%)
-          </button>
-          <button
-            onClick={() => {
-              setFilterMode('pending');
-              setCurrentPage(1);
-            }}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${
-              filterMode === 'pending'
-                ? 'bg-amber-600 text-white'
-                : 'text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40'
-            }`}
-          >
-            ממתינים לבדיקה
-          </button>
-          <button
-            onClick={() => {
-              setFilterMode('unlinked');
-              setCurrentPage(1);
-            }}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${
-              filterMode === 'unlinked'
-                ? 'bg-rose-600 text-white'
-                : 'text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40'
-            }`}
-          >
-            ללא מקור ({unlinkedCommLines.length})
-          </button>
-        </div>
-
-        {/* Bulk Approval Button */}
-        <button
-          type="button"
-          onClick={handleApproveAllHighConfidence}
-          className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
-          title="מאשר מראש את כל הקישורים עם ציון ודאות של 80% ומעלה"
-        >
-          <ShieldCheck className="w-4 h-4" />
-          <span>אישור גורף (ודאות ≥80%)</span>
-        </button>
-
-        {/* Pagination Controls */}
-        {totalPages > 1 && (
-          <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-on-surface)]">
-            <button
-              disabled={currentPage <= 1}
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              className="px-3 py-1.5 bg-[var(--color-surface-container-low)] hover:bg-[var(--color-outline-variant)] disabled:opacity-40 rounded-xl border border-[var(--color-outline)] font-bold"
-            >
-              הקודם
-            </button>
-            <span className="font-bold">
-              עמוד {currentPage} מתוך {totalPages}
-            </span>
-            <button
-              disabled={currentPage >= totalPages}
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              className="px-3 py-1.5 bg-[var(--color-surface-container-low)] hover:bg-[var(--color-outline-variant)] disabled:opacity-40 rounded-xl border border-[var(--color-outline)] font-bold"
-            >
-              הבא
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between text-xs text-[var(--color-on-surface-variant)] px-1 font-medium">
-        <span>
-          מציג {currentPageIndices.length} שורות פירוש (סה"כ {filteredCommentaryIndices.length})
-        </span>
-      </div>
-
       {/* Main Unified List */}
-      <div className="space-y-4">
-        {currentPageGroups.length === 0 ? (
+      <div className="space-y-4 relative" ref={containerRef}>
+        <svg className="absolute inset-0 pointer-events-none z-10" style={{ width: '100%', height: '100%' }}>
+          {svgLines.map(line => {
+            const offset = Math.abs(line.x1 - line.x2) / 2;
+            const pathData = `M ${line.x1} ${line.y1} C ${line.x1 - offset} ${line.y1}, ${line.x2 + offset} ${line.y2}, ${line.x2} ${line.y2}`;
+            return (
+              <path 
+                key={line.id} 
+                d={pathData} 
+                stroke={line.color || "#10b981"}
+                strokeWidth="2.5" 
+                fill="none"
+                opacity="0.5"
+              />
+            );
+          })}
+        </svg>
+        {groupedCommentary.length === 0 ? (
           <div className="p-12 text-center text-sm text-[var(--color-on-surface-variant)] bg-[var(--color-surface)] rounded-2xl border border-dashed border-[var(--color-outline)] font-medium">
             לא נמצאו שורות פירוש המתאימות לסינון המבוקש
           </div>
         ) : (
-          currentPageGroups.map((group, gIdx) => {
+          groupedCommentary.map((group, gIdx) => {
             const firstLinkObj = group.links[0];
             const firstCommIdx = group.commIndices[0];
 
@@ -767,13 +838,18 @@ export const EditMode: React.FC<EditModeProps> = ({
 
                   {/* Target Source Line (5 Cols) */}
                   <div className="md:col-span-5 border-t md:border-t-0 md:border-l border-[var(--color-outline)] pt-4 md:pt-0 pl-0 md:pl-4 space-y-2">
-                    <div className="flex flex-wrap items-center justify-between gap-1 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                    {(() => {
+                      const targetType = firstLinkObj?.secondaryTarget || 'primary';
+                      const colors = getTargetColors(targetType);
+                      return (
+                    <>
+                    <div className={`flex flex-wrap items-center justify-between gap-1 text-xs font-bold ${colors.text}`}>
                       {firstLinkObj ? (
                         <>
                           <span className="font-bold">
                             מקור: {firstLinkObj.secondaryTarget ? (firstLinkObj.secondaryTarget === 'rashi' ? 'רש"י' : 'תוספות') : config.targetBookName} (שורה {firstLinkObj.secondaryTarget ? firstLinkObj.secondary_line_index : firstLinkObj.line_index_2})
                           </span>
-                          <span className="text-[11px] bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md text-emerald-800 dark:text-emerald-300 font-bold max-w-[180px] truncate" title={firstLinkObj.secondaryRef || firstLinkObj.heRef_2 || firstLinkObj.path_2}>
+                          <span className={`text-[11px] ${colors.bgTitle} px-2 py-0.5 rounded-md ${colors.text} font-bold max-w-[180px] truncate`} title={firstLinkObj.secondaryRef || firstLinkObj.heRef_2 || firstLinkObj.path_2}>
                             {firstLinkObj.secondaryRef || firstLinkObj.heRef_2 || (firstLinkObj.secondaryTarget ? (firstLinkObj.secondaryTarget === 'rashi' ? 'רש"י' : 'תוספות') : config.targetBookName)}
                           </span>
                         </>
@@ -795,12 +871,17 @@ export const EditMode: React.FC<EditModeProps> = ({
                               : (tosafotLines && tosafotLines[firstLinkObj.secondary_line_index! - 1] || ''))
                           : (sourceLines && sourceLines[firstLinkObj.line_index_2 - 1] || '')}
                         isPrimary={!firstLinkObj.secondaryTarget}
+                        links={group.links}
+                        targetType={targetType}
                       />
                     ) : (
                       <div className="p-5 rounded-xl border border-dashed border-[var(--color-outline)] text-center text-xs text-[var(--color-on-surface-variant)]">
                         אין מקור מקושר. לחץ על כפתור העריכה בכרטיס הפירוש כדי לקשר.
                       </div>
                     )}
+                    </>
+                    );
+                    })()}
                   </div>
                 </div>
               </React.Fragment>
@@ -808,35 +889,6 @@ export const EditMode: React.FC<EditModeProps> = ({
           })
         )}
 
-
-        {/* Bottom Pagination Bar */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-3 pt-6 text-sm font-semibold text-[var(--color-on-surface)]">
-            <button
-              disabled={currentPage <= 1}
-              onClick={() => {
-                setCurrentPage(p => Math.max(1, p - 1));
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="px-5 py-2.5 bg-[var(--color-surface)] hover:bg-[var(--color-surface-container-low)] disabled:opacity-40 rounded-xl border border-[var(--color-outline)] shadow-2xs font-bold"
-            >
-              ← עמוד קודם
-            </button>
-            <span className="font-bold">
-              עמוד {currentPage} מתוך {totalPages}
-            </span>
-            <button
-              disabled={currentPage >= totalPages}
-              onClick={() => {
-                setCurrentPage(p => Math.min(totalPages, p + 1));
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="px-5 py-2.5 bg-[var(--color-surface)] hover:bg-[var(--color-surface-container-low)] disabled:opacity-40 rounded-xl border border-[var(--color-outline)] shadow-2xs font-bold"
-            >
-              עמוד הבא →
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Floating Unlinked Lines Alert Widget */}
@@ -860,19 +912,7 @@ export const EditMode: React.FC<EditModeProps> = ({
                   <span>{isUnlinkedDrawerOpen ? 'סגור' : 'הצג'}</span>
                 </button>
 
-                <button
-                  onClick={() => {
-                    setFilterMode(filterMode === 'unlinked' ? 'all' : 'unlinked');
-                    setCurrentPage(1);
-                  }}
-                  className={`px-2.5 py-1 text-xs font-bold rounded-xl transition-colors border ${
-                    filterMode === 'unlinked'
-                      ? 'bg-rose-600 text-white border-rose-600'
-                      : 'bg-[var(--color-surface-container-low)] text-[var(--color-on-surface)] border-[var(--color-outline)] hover:bg-[var(--color-outline-variant)]'
-                  }`}
-                >
-                  {filterMode === 'unlinked' ? 'מציג לא מקושרים' : 'סנן'}
-                </button>
+                
 
                 <button
                   onClick={() => setIsWidgetMinimized(!isWidgetMinimized)}
@@ -942,92 +982,135 @@ export const EditMode: React.FC<EditModeProps> = ({
           {/* Drawer Panel */}
           <div className="relative z-10 w-80 sm:w-96 max-w-[85vw] h-full bg-[var(--color-surface)] border-l border-[var(--color-outline)] shadow-2xl flex flex-col font-sans transition-all">
             {/* Drawer Header */}
-            <div className="p-4 border-b border-[var(--color-outline)] flex items-center justify-between bg-[var(--color-surface-container-high)]">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-[var(--color-primary)] text-[var(--color-on-primary)] shadow-2xs">
-                  <ListTree className="w-4 h-4" />
+            
+            {/* Drawer Header */}
+            <div className="flex flex-col bg-[var(--color-surface-container-high)]">
+              <div className="p-4 border-b border-[var(--color-outline)] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-[var(--color-primary)] text-[var(--color-on-primary)] shadow-2xs">
+                    <ListTree className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm sm:text-base font-bold text-[var(--color-on-surface)]">
+                      סרגל ניווט וחיפוש
+                    </h2>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-sm sm:text-base font-bold text-[var(--color-on-surface)]">
-                    סרגל ניווט כותרות ופרקים
-                  </h2>
-                  <p className="text-[11px] text-[var(--color-on-surface-variant)]">
-                    סה"כ {commentarySegments.length} כותרות בספר
-                  </p>
-                </div>
+                <button
+                  onClick={onCloseNavDrawer}
+                  className="p-1.5 text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)] rounded-lg transition-colors"
+                  title="סגור סרגל ניווט"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button
-                onClick={onCloseNavDrawer}
-                className="p-1.5 rounded-xl hover:bg-[var(--color-outline-variant)] text-[var(--color-on-surface-variant)] transition-colors cursor-pointer"
-                title="סגור סרגל ניווט"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              {/* Tabs */}
+              <div className="flex items-center border-b border-[var(--color-outline)]">
+                <button
+                  onClick={() => setDrawerTab('nav')}
+                  className={`flex-1 py-2 text-xs font-bold transition-colors ${
+                    drawerTab === 'nav'
+                      ? 'border-b-2 border-[var(--color-primary)] text-[var(--color-primary)]'
+                      : 'text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)]'
+                  }`}
+                >
+                  ניווט
+                </button>
+                <button
+                  onClick={() => setDrawerTab('search')}
+                  className={`flex-1 py-2 text-xs font-bold transition-colors ${
+                    drawerTab === 'search'
+                      ? 'border-b-2 border-[var(--color-primary)] text-[var(--color-primary)]'
+                      : 'text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)]'
+                  }`}
+                >
+                  חיפוש
+                </button>
+              </div>
             </div>
 
-            {/* Heading Search */}
-            {commentarySegments.length > 3 && (
-              <div className="p-3 border-b border-[var(--color-outline)] bg-[var(--color-surface-container-low)]">
-                <div className="relative">
+            <div className="flex-1 flex flex-col min-h-0">
+              {drawerTab === 'search' ? (
+                <div className="p-4 space-y-4">
                   <input
                     type="text"
-                    value={drawerSearchQuery}
-                    onChange={(e) => setDrawerSearchQuery(e.target.value)}
-                    placeholder="סינון/חיפוש בכותרות..."
-                    className="w-full pl-3 pr-8 py-1.5 text-xs bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-lg text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] font-sans"
+                    value={sourceSearchQuery}
+                    onChange={e => setSourceSearchQuery(e.target.value)}
+                    placeholder="חיפוש בכל הפרויקט..."
+                    className="w-full pl-3 pr-4 py-2 text-sm bg-[var(--color-surface-container-low)] border border-[var(--color-outline)] rounded-xl text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] font-sans"
                   />
-                  <Search className="w-3.5 h-3.5 text-[var(--color-on-surface-variant)] absolute right-2.5 top-2.5" />
-                </div>
-              </div>
-            )}
-
-            {/* List of extracted Headings */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
-              {filteredDrawerSegments.length === 0 ? (
-                <div className="p-8 text-center text-xs text-[var(--color-on-surface-variant)] bg-[var(--color-surface-container-low)] rounded-xl border border-dashed border-[var(--color-outline)] font-medium">
-                  לא נמצאו כותרות המתאימות לחיפוש
+                  <p className="text-xs text-[var(--color-on-surface-variant)]">
+                    החיפוש מסנן את הרשימה הראשית לפי שורות פירוש או מקור.
+                  </p>
                 </div>
               ) : (
-                filteredDrawerSegments.map((seg, sIdx) => {
-                  const segLinkCount = links.filter(
-                    l => l.line_index_1 >= seg.startLine && l.line_index_1 <= seg.endLine
-                  ).length;
-
-                  return (
-                    <button
-                      key={`drawer-seg-${sIdx}`}
-                      onClick={() => handleSelectHeading(seg)}
-                      className="w-full text-right p-3 rounded-xl border border-[var(--color-outline-variant)] bg-[var(--color-surface-container-low)] hover:bg-[var(--color-primary-subtle)] hover:border-[var(--color-primary)] transition-all group flex flex-col gap-1.5 cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Bookmark className="w-4 h-4 text-[var(--color-primary)] shrink-0 group-hover:scale-110 transition-transform" />
-                          <span className="font-bold text-xs sm:text-sm text-[var(--color-on-surface)] truncate font-serif">
-                            {seg.headerTitle}
-                          </span>
-                        </div>
-                        {seg.headerLineIndex > 0 && (
-                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-outline)] text-[var(--color-on-surface-variant)] shrink-0">
-                            שורה {seg.headerLineIndex}
-                          </span>
-                        )}
+                <div className="flex flex-col flex-1 min-h-0">
+                  {/* Heading Search */}
+                  {commentarySegments.length > 3 && (
+                    <div className="p-3 border-b border-[var(--color-outline)] bg-[var(--color-surface-container-low)] shrink-0">
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={drawerSearchQuery}
+                          onChange={(e) => setDrawerSearchQuery(e.target.value)}
+                          placeholder="סינון/חיפוש בכותרות..."
+                          className="w-full pl-3 pr-8 py-1.5 text-xs bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-lg text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] font-sans"
+                        />
+                        <Search className="w-3.5 h-3.5 text-[var(--color-on-surface-variant)] absolute right-2.5 top-2.5" />
                       </div>
+                    </div>
+                  )}
 
-                      <div className="flex items-center justify-between text-[11px] text-[var(--color-on-surface-variant)] pt-1.5 border-t border-[var(--color-outline-variant)]/60">
-                        <span>שורות {seg.startLine} עד {seg.endLine}</span>
-                        <span className="font-bold text-[var(--color-primary)] bg-[var(--color-surface)] px-2 py-0.5 rounded-md border border-[var(--color-outline-variant)]">
-                          {segLinkCount} קישורים
-                        </span>
+                  {/* List of extracted Headings */}
+                  <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                    {filteredDrawerSegments.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-[var(--color-on-surface-variant)] bg-[var(--color-surface-container-low)] rounded-xl border border-dashed border-[var(--color-outline)] font-medium">
+                        לא נמצאו כותרות המתאימות לחיפוש
                       </div>
-                    </button>
-                  );
-                })
+                    ) : (
+                      filteredDrawerSegments.map((seg, sIdx) => {
+                        const segLinkCount = links.filter(
+                          l => l.line_index_1 >= seg.startLine && l.line_index_1 <= seg.endLine
+                        ).length;
+
+                        return (
+                          <button
+                            key={`drawer-seg-${sIdx}`}
+                            onClick={() => handleSelectHeading(seg)}
+                            className="w-full text-right p-3 rounded-xl border border-[var(--color-outline-variant)] bg-[var(--color-surface-container-low)] hover:bg-[var(--color-primary-subtle)] hover:border-[var(--color-primary)] transition-all group flex flex-col gap-1.5 cursor-pointer"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Bookmark className="w-4 h-4 text-[var(--color-primary)] shrink-0 group-hover:scale-110 transition-transform" />
+                                <span className="font-bold text-xs sm:text-sm text-[var(--color-on-surface)] truncate font-serif">
+                                  {seg.headerTitle}
+                                </span>
+                              </div>
+                              {seg.headerLineIndex > 0 && (
+                                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-outline)] text-[var(--color-on-surface-variant)] shrink-0">
+                                  שורה {seg.headerLineIndex}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] text-[var(--color-on-surface-variant)] pt-1.5 border-t border-[var(--color-outline-variant)]/60">
+                              <span>שורות {seg.startLine} עד {seg.endLine}</span>
+                              <span className="font-bold text-[var(--color-primary)] bg-[var(--color-surface)] px-2 py-0.5 rounded-md border border-[var(--color-outline-variant)]">
+                                {segLinkCount} קישורים
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                  
+                  {/* Footer */}
+                  <div className="p-3 border-t border-[var(--color-outline)] bg-[var(--color-surface-container-high)] text-center text-xs text-[var(--color-on-surface-variant)] font-medium shrink-0">
+                    לחיצה על כותרת תגלול אוטומטית לקטע המבוקש בדף
+                  </div>
+                </div>
               )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-3 border-t border-[var(--color-outline)] bg-[var(--color-surface-container-high)] text-center text-xs text-[var(--color-on-surface-variant)] font-medium">
-              לחיצה על כותרת תגלול אוטומטית לקטע המבוקש בדף
             </div>
           </div>
         </div>

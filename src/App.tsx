@@ -5,7 +5,7 @@ import { TopToolbar } from './components/TopToolbar';
 import { SetupMode } from './components/SetupMode';
 import { EditMode } from './components/EditMode';
 import { ProjectsModal } from './components/ProjectsModal';
-import { SingleHtmlExporterModal } from './components/SingleHtmlExporterModal';
+
 import { saveToCache, notifySuccess, notifyError } from './utils/otzariaBridge';
 
 export default function App() {
@@ -14,8 +14,9 @@ export default function App() {
 
   // Modals & Navigation state
   const [showProjectsModal, setShowProjectsModal] = useState(false);
-  const [showHtmlExporterModal, setShowHtmlExporterModal] = useState(false);
+  
   const [isNavDrawerOpen, setIsNavDrawerOpen] = useState(false);
+  const [sortMode, setSortMode] = useState<'book_order' | 'score_asc' | 'score_desc'>('book_order');
 
   // Listen for Otzaria plugin events (plugin.boot, theme.changed) and fetch initial theme
   useEffect(() => {
@@ -159,10 +160,12 @@ export default function App() {
         mode={mode}
         onSaveSession={handleSaveSession}
         onOpenProjects={() => setShowProjectsModal(true)}
-        onOpenHtmlModal={() => setShowHtmlExporterModal(true)}
+        
         onReturnToSetup={() => setMode('setup')}
         isNavDrawerOpen={isNavDrawerOpen}
         onToggleNavDrawer={() => setIsNavDrawerOpen(prev => !prev)}
+        sortMode={sortMode}
+        onSortModeChange={setSortMode}
       />
 
       {/* Main Mode View */}
@@ -179,6 +182,7 @@ export default function App() {
               isNavDrawerOpen={isNavDrawerOpen}
               onCloseNavDrawer={() => setIsNavDrawerOpen(false)}
               onToggleNavDrawer={() => setIsNavDrawerOpen(prev => !prev)}
+              sortMode={sortMode}
             />
           )
         )}
@@ -192,11 +196,6 @@ export default function App() {
         />
       )}
 
-      {showHtmlExporterModal && (
-        <SingleHtmlExporterModal
-          onClose={() => setShowHtmlExporterModal(false)}
-        />
-      )}
     </div>
   );
 }

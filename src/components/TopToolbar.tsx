@@ -2,15 +2,19 @@ import React from 'react';
 import { Save, FolderOpen, Download, ArrowLeftRight, Code, RotateCcw, ListTree } from 'lucide-react';
 import JSZip from 'jszip';
 import { SessionState } from '../types';
-import { formatLineWithDH, parseDocumentSegments } from '../utils/parserAlgorithm';
+import { formatLineWithDH, parseDocumentSegments, normalizeText } from '../utils/parserAlgorithm';
+import { getWordSimilarity } from '../utils/fuzzyUtils';
+import { calculateDocumentIdfWeights, getCombinedWordWeight } from '../utils/wordWeights';
 import { notifySuccess, notifyError } from '../utils/otzariaBridge';
 
 interface TopToolbarProps {
+  sortMode?: 'book_order' | 'score_asc' | 'score_desc';
+  onSortModeChange?: (mode: 'book_order' | 'score_asc' | 'score_desc') => void;
   session: SessionState | null;
   mode: 'setup' | 'edit';
   onSaveSession: () => void;
   onOpenProjects: () => void;
-  onOpenHtmlModal: () => void;
+  
   onReturnToSetup: () => void;
   isNavDrawerOpen?: boolean;
   onToggleNavDrawer?: () => void;
@@ -21,10 +25,11 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   mode,
   onSaveSession,
   onOpenProjects,
-  onOpenHtmlModal,
   onReturnToSetup,
   isNavDrawerOpen,
   onToggleNavDrawer,
+  sortMode,
+  onSortModeChange,
 }) => {
   const commentaryName = session?.commentaryTitle || 'ספר פירוש';
   const sourceName = session?.config?.targetBookName || 'ספר מקור';
@@ -81,33 +86,68 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         'line_index_1',
         'commentary_line',
         'dh_text',
+        'commentary_words',
         'line_index_2',
         'source_line',
         'source_words',
         'confidence',
         'status',
+        'word_score_breakdown',
+        'word_score_changes',
         'candidate_scores',
         'analysis_notes'
       ];
 
       const normalizeForCsv = (val: any) => escapeCsv(val === undefined || val === null ? '' : val);
+      const sourceIdfWeights = calculateDocumentIdfWeights(session.sourceLines);
       const analysisRows = session.links.map(link => {
         const commentaryLine = session.commentaryLines[link.line_index_1 - 1] || '';
         const sourceLine = session.sourceLines[link.line_index_2 - 1] || '';
         const dhText = link.dhText || '';
-        const sourceWords = sourceLine.trim().split(/\s+/).filter(Boolean).join(' ');
+        const commentaryWords = normalizeText(commentaryLine).split(/\s+/).filter(Boolean);
+        const sourceWords = normalizeText(sourceLine).split(/\s+/).filter(Boolean);
+
+        const wordContributions = commentaryWords.map(word => {
+          const wordWeight = getCombinedWordWeight(word, true, sourceIdfWeights);
+          const bestMatch = sourceWords
+            .map(sw => ({ sw, sim: getWordSimilarity(word, sw, true) }))
+            .sort((a, b) => b.sim - a.sim)[0];
+
+          const sim = bestMatch?.sim ?? 0;
+          const contrib = parseFloat((wordWeight * sim).toFixed(2));
+          const penalty = parseFloat((wordWeight * (1 - sim)).toFixed(2));
+          const matchLabel = bestMatch?.sw ? `${bestMatch.sw}` : 'none';
+          const label = `${word}->${matchLabel}:${sim.toFixed(2)}*${wordWeight.toFixed(2)}=${contrib.toFixed(2)}`;
+          const type = sim >= 0.75 ? 'ADD' : 'SUB';
+          return { word, label, type, contrib, penalty };
+        });
+
+        const addedWords = wordContributions
+          .filter(item => item.type === 'ADD')
+          .map(item => `${item.word}+${item.contrib.toFixed(2)}`)
+          .join('; ');
+
+        const subtractedWords = wordContributions
+          .filter(item => item.type === 'SUB')
+          .map(item => `${item.word}-${item.penalty.toFixed(2)}`)
+          .join('; ');
+
+        const wordScoreBreakdown = wordContributions.map(item => item.label).join(' | ');
         const candidateScores = link.candidates?.map(c => `${c.lineNum}:${c.score.toFixed(2)}`).join('; ') || '';
-        const analysisNotes = `match_confidence=${link.confidence ?? 0}; candidates=${candidateScores || 'none'}`;
+        const analysisNotes = `dh_words=${commentaryWords.length}; source_words=${sourceWords.length}; match_confidence=${link.confidence ?? 0}; candidates=${candidateScores || 'none'}`;
 
         return [
           normalizeForCsv(link.line_index_1),
           normalizeForCsv(commentaryLine),
           normalizeForCsv(dhText),
+          normalizeForCsv(commentaryWords.join(' ')),
           normalizeForCsv(link.line_index_2),
           normalizeForCsv(sourceLine),
-          normalizeForCsv(sourceWords),
+          normalizeForCsv(sourceWords.join(' ')),
           normalizeForCsv(link.confidence ?? ''),
           normalizeForCsv(link.status ?? ''),
+          normalizeForCsv(wordScoreBreakdown),
+          normalizeForCsv(`added:${addedWords || 'none'}; subtracted:${subtractedWords || 'none'}`),
           normalizeForCsv(candidateScores),
           normalizeForCsv(analysisNotes)
         ].join(',');
@@ -121,7 +161,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         const lineIdx1 = idx + 1; // 1-based
         const highlight = session.dhHighlights?.[lineIdx1];
         if (highlight && highlight.wordCount > 0) {
-          return formatLineWithDH(line, highlight);
+          return formatLineWithDH(line, highlight, undefined, undefined, true);
         }
         return line;
       });
@@ -152,6 +192,27 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     <header className="sticky top-0 z-40 w-full bg-[var(--color-surface-container-high)] text-[var(--color-on-surface)] shadow-xs border-b border-[var(--color-outline)]">
       <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
         {/* Right side: Commentary and Source Active Book Titles */}
+        
+      <div className="flex items-center gap-2">
+        {mode === 'edit' && onToggleNavDrawer && (
+            <button
+              onClick={onToggleNavDrawer}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all shadow-xs border ${
+                isNavDrawerOpen
+                  ? 'bg-[var(--color-primary)] text-[var(--color-on-primary)] border-[var(--color-primary)]'
+                  : 'bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] border-[var(--color-outline)]'
+              }`}
+              title="סרגל ניווט וחיפוש"
+            >
+              <ListTree className="w-3.5 h-3.5" />
+              <span>ניווט וחיפוש</span>
+              {session && (
+                <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-100 font-mono mr-0.5">
+                  {parseDocumentSegments(session.commentaryLines.join('\n')).segments.length}
+                </span>
+              )}
+            </button>
+          )}
         <div className="flex items-center gap-2 bg-[var(--color-surface)] px-3 py-1.5 rounded-xl border border-[var(--color-outline)] shadow-2xs">
           <span className="text-xs font-bold text-[var(--color-primary)] max-w-[180px] truncate" title={commentaryName}>
             {commentaryName}
@@ -166,28 +227,12 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             </span>
           )}
         </div>
+      </div>
+    
 
         {/* Left side: Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
-          {mode === 'edit' && onToggleNavDrawer && (
-            <button
-              onClick={onToggleNavDrawer}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all shadow-xs border ${
-                isNavDrawerOpen
-                  ? 'bg-[var(--color-primary)] text-[var(--color-on-primary)] border-[var(--color-primary)]'
-                  : 'bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] border-[var(--color-outline)]'
-              }`}
-              title="סרגל ניווט בכותרות ופרקים"
-            >
-              <ListTree className="w-3.5 h-3.5" />
-              <span>ניווט בכותרות</span>
-              {session && (
-                <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-100 font-mono mr-0.5">
-                  {parseDocumentSegments(session.commentaryLines.join('\n')).segments.length}
-                </span>
-              )}
-            </button>
-          )}
+          
 
           {mode === 'edit' && (
             <button
@@ -219,7 +264,21 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             <span>פתיחה</span>
           </button>
 
-          <button
+          
+          {mode === 'edit' && onSortModeChange && (
+            <select
+              value={sortMode}
+              onChange={(e) => onSortModeChange(e.target.value as any)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] rounded-lg transition-colors border border-[var(--color-outline)] cursor-pointer outline-none"
+              title="מיון תוצאות"
+            >
+              <option value="book_order">מיון לפי סדר הספר</option>
+              <option value="score_asc">מיון לפי ניקוד (סדר עולה)</option>
+              <option value="score_desc">מיון לפי ניקוד (סדר יורד)</option>
+            </select>
+          )}
+  
+<button
             onClick={handleExportZip}
             disabled={!session}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-emerald-700 dark:bg-emerald-600 text-white hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all shadow-xs"
@@ -229,14 +288,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             <span>יצוא ZIP</span>
           </button>
 
-          <button
-            onClick={onOpenHtmlModal}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-secondary-subtle)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] rounded-lg transition-colors border border-[var(--color-outline)]"
-            title="קימפול ל-HTML בודד והורדת התוסף לגיטהאב"
-          >
-            <Code className="w-3.5 h-3.5 text-current" />
-            <span>קימפול HTML בודד</span>
-          </button>
+          
         </div>
       </div>
     </header>
