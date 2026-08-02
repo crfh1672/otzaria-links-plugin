@@ -1,5 +1,5 @@
 import { OtzariaLink, PluginConfig, DHHighlight } from '../types';
-import { expandAbbreviationsInText, DEFAULT_ABBREVIATIONS } from '../data/abbreviations';
+import { expandAbbreviationsInText, DEFAULT_ABBREVIATIONS, NORMALIZED_ABBREVIATIONS_MAP } from '../data/abbreviations';
 import { getWordSimilarity, getNikudFingerprint, levenshteinDistance } from './fuzzyUtils';
 import { getCombinedWordWeight, calculateDocumentIdfWeights } from './wordWeights';
 
@@ -1014,38 +1014,79 @@ export function findSourceMatchRange(sourceLine: string, dhText: string): DHHigh
   const sourceWords = normalizeText(stripHtmlTags(dhText)).split(/\s+/).filter(Boolean);
   if (targetWords.length === 0 || sourceWords.length === 0) return null;
 
-  let maxSeqScore = 0;
-  let bestStart = -1;
-  let bestCount = 0;
+  const matchedIndices: number[] = [];
 
-  for (let startWIdx = 0; startWIdx < Math.min(3, sourceWords.length); startWIdx++) {
-    for (let docWIdx = 0; docWIdx < targetWords.length; docWIdx++) {
-      let k = 0;
-      let seqScore = 0;
-      while (
-        startWIdx + k < sourceWords.length &&
-        docWIdx + k < targetWords.length
-      ) {
-        const w1 = sourceWords[startWIdx + k];
-        const w2 = targetWords[docWIdx + k];
-        const sim = getWordSimilarity(w1, w2, true);
-        if (sim <= 0) break;
-        const wWeight = getCombinedWordWeight(w1, true); // No IDF map needed for simple UI highlight
-        seqScore += sim * wWeight;
-        k++;
+  for (let srcIdx = 0; srcIdx < sourceWords.length; srcIdx++) {
+    const w1 = sourceWords[srcIdx];
+    let bestTgtIdx = -1;
+    let bestSim = 0;
+
+    for (let tgtIdx = 0; tgtIdx < targetWords.length; tgtIdx++) {
+      const w2 = targetWords[tgtIdx];
+      
+      // 1. Direct similarity match
+      let sim = getWordSimilarity(w1, w2, true);
+
+      // 2. Abbreviation map match
+      if (sim <= 0.4) {
+        const options1 = NORMALIZED_ABBREVIATIONS_MAP[w1];
+        if (options1) {
+          for (const opt of options1) {
+            if (opt.split(/\s+/).some(optW => getWordSimilarity(optW, w2, true) > 0.6)) {
+              sim = 0.8;
+              break;
+            }
+          }
+        }
+        if (sim <= 0.4) {
+          const options2 = NORMALIZED_ABBREVIATIONS_MAP[w2];
+          if (options2) {
+            for (const opt of options2) {
+              if (opt.split(/\s+/).some(optW => getWordSimilarity(optW, w1, true) > 0.6)) {
+                sim = 0.8;
+                break;
+              }
+            }
+          }
+        }
       }
-      if (seqScore > maxSeqScore && k > 0) {
-        maxSeqScore = seqScore;
-        bestStart = docWIdx;
-        bestCount = k;
+
+      // 3. Simple character-level prefix/abbreviation heuristic
+      if (sim <= 0.4) {
+        const clean1 = w1.replace(/['"]/g, '');
+        const clean2 = w2.replace(/['"]/g, '');
+        if (clean1 && clean2) {
+          if (clean1.startsWith(clean2) || clean2.startsWith(clean1)) {
+            sim = 0.6;
+          }
+        }
       }
+
+      if (sim > bestSim) {
+        bestSim = sim;
+        bestTgtIdx = tgtIdx;
+      }
+    }
+
+    if (bestSim > 0.4 && bestTgtIdx !== -1) {
+      matchedIndices.push(bestTgtIdx);
     }
   }
 
-  if (bestStart !== -1 && maxSeqScore >= 0.5) {
-    return { wordStart: bestStart, wordCount: bestCount };
+  if (matchedIndices.length === 0) return null;
+
+  // Sort and find boundaries
+  matchedIndices.sort((a, b) => a - b);
+  const minIdx = matchedIndices[0];
+  const maxIdx = matchedIndices[matchedIndices.length - 1];
+  const count = maxIdx - minIdx + 1;
+
+  // Safeguard: If matches are too sparse across a massive line, keep it to the first cluster
+  if (count > sourceWords.length + 5 && matchedIndices.length < sourceWords.length / 2) {
+    return { wordStart: matchedIndices[0], wordCount: 1 };
   }
-  return null;
+
+  return { wordStart: minIdx, wordCount: count };
 }
 
 export function formatLineWithDH(line: string, highlight?: DHHighlight, customId?: string, isSource?: boolean, forExport?: boolean): string {
