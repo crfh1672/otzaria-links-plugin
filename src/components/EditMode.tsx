@@ -285,7 +285,7 @@ export const EditMode: React.FC<EditModeProps> = ({
       }
     });
     setSvgLines(newLines);
-  }, [session.links, dhHighlights]);
+  }, [session.links, session.dhHighlights]);
 
   useEffect(() => {
     const t = setTimeout(updateSvgLines, 100);
