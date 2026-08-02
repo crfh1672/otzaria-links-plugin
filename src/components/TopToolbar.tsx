@@ -46,10 +46,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           line_index_2: link.line_index_2,
           heRef_2: link.heRef_2,
           path_2: link.path_2,
-          connection_type: link.connection_type,
-          dhText: link.dhText,
-          confidence: link.confidence,
-          status: link.status
+          connection_type: link.connection_type
         });
       });
 
@@ -57,8 +54,8 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
       const cleanFileName = session.commentaryTitle.replace(/[/\\?%*:|"<>]/g, '_');
       zip.file(`${cleanFileName}_links.json`, linksJsonContent);
 
-      // 2. Generate _links.csv
-      const csvHeaders = ['line_index_1', 'line_index_2', 'heRef_2', 'path_2', 'connection_type', 'dhText', 'confidence', 'status'];
+      // 2. Generate _links.csv without dhText/confidence/status
+      const csvHeaders = ['line_index_1', 'line_index_2', 'heRef_2', 'path_2', 'connection_type'];
       const escapeCsv = (val: any) => {
         if (val === undefined || val === null) return '""';
         const str = String(val);
@@ -73,14 +70,51 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         escapeCsv(link.line_index_2),
         escapeCsv(link.heRef_2),
         escapeCsv(link.path_2),
-        escapeCsv(link.connection_type || 'commentary'),
-        escapeCsv(link.dhText || ''),
-        escapeCsv(link.confidence ?? 85),
-        escapeCsv(link.status || 'approved')
+        escapeCsv(link.connection_type || 'commentary')
       ].join(','));
 
       const csvContent = '\uFEFF' + [csvHeaders.join(','), ...csvRows].join('\r\n');
       zip.file(`${cleanFileName}_links.csv`, csvContent);
+
+      // 3. Generate analysis CSV with DH, source word comparisons and score details
+      const analysisHeaders = [
+        'line_index_1',
+        'commentary_line',
+        'dh_text',
+        'line_index_2',
+        'source_line',
+        'source_words',
+        'confidence',
+        'status',
+        'candidate_scores',
+        'analysis_notes'
+      ];
+
+      const normalizeForCsv = (val: any) => escapeCsv(val === undefined || val === null ? '' : val);
+      const analysisRows = session.links.map(link => {
+        const commentaryLine = session.commentaryLines[link.line_index_1 - 1] || '';
+        const sourceLine = session.sourceLines[link.line_index_2 - 1] || '';
+        const dhText = link.dhText || '';
+        const sourceWords = sourceLine.trim().split(/\s+/).filter(Boolean).join(' ');
+        const candidateScores = link.candidates?.map(c => `${c.lineNum}:${c.score.toFixed(2)}`).join('; ') || '';
+        const analysisNotes = `match_confidence=${link.confidence ?? 0}; candidates=${candidateScores || 'none'}`;
+
+        return [
+          normalizeForCsv(link.line_index_1),
+          normalizeForCsv(commentaryLine),
+          normalizeForCsv(dhText),
+          normalizeForCsv(link.line_index_2),
+          normalizeForCsv(sourceLine),
+          normalizeForCsv(sourceWords),
+          normalizeForCsv(link.confidence ?? ''),
+          normalizeForCsv(link.status ?? ''),
+          normalizeForCsv(candidateScores),
+          normalizeForCsv(analysisNotes)
+        ].join(',');
+      });
+
+      const analysisContent = '\uFEFF' + [analysisHeaders.join(','), ...analysisRows].join('\r\n');
+      zip.file(`${cleanFileName}_analysis.csv`, analysisContent);
 
       // 3. Generate updated commentary .txt file with <b>...</b> tags
       const updatedLines = session.commentaryLines.map((line, idx) => {

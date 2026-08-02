@@ -116,6 +116,33 @@ export const EditMode: React.FC<EditModeProps> = ({
     });
   };
 
+  // Cycle to the next Top-K candidate for a given commentary line.
+  // Each call advances candidateIndex by 1 (wrapping around).
+  // line_index_2 is updated to the newly selected candidate's lineNum.
+  const handleCycleCandidate = (commLineIdx1: number) => {
+    const updatedLinks = session.links.map(l => {
+      if (l.line_index_1 !== commLineIdx1) return l;
+      if (!l.candidates || l.candidates.length <= 1) return l;
+
+      const nextIdx = ((l.candidateIndex ?? 0) + 1) % l.candidates.length;
+      const nextCandidate = l.candidates[nextIdx];
+
+      return {
+        ...l,
+        line_index_2: nextCandidate.lineNum,
+        candidateIndex: nextIdx,
+        confidence: nextCandidate.confidence,
+        // Mark as pending when user cycles — they should review the new candidate
+        status: 'pending' as const
+      };
+    });
+    onUpdateSession({
+      ...session,
+      links: updatedLinks,
+      lastModifiedTimestamp: Date.now()
+    });
+  };
+
   const {
     commentaryLines,
     sourceLines,
@@ -467,6 +494,19 @@ export const EditMode: React.FC<EditModeProps> = ({
 
           {/* Floating Actions */}
           <div className="opacity-90 group-hover:opacity-100 flex items-center gap-1.5 transition-opacity">
+            {/* Cycle Top-K candidate button — only shown when multiple candidates exist */}
+            {linkObj && linkObj.candidates && linkObj.candidates.length > 1 && (
+              <button
+                type="button"
+                onClick={() => handleCycleCandidate(lineIdx1)}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-xl hover:bg-[var(--color-primary-subtle)] hover:border-[var(--color-primary)] text-[var(--color-primary)] transition-colors"
+                title={`עבור למועמד הבא (${(linkObj.candidateIndex ?? 0) + 1}/${linkObj.candidates.length})`}
+              >
+                <Layers className="w-3 h-3" />
+                <span>מועמד {(linkObj.candidateIndex ?? 0) + 1}/{linkObj.candidates.length}</span>
+              </button>
+            )}
+
             {/* DH Word Highlight Controls */}
             <div className="flex items-center gap-1 bg-[var(--color-surface)] p-1 rounded-xl border border-[var(--color-outline)]">
               <span className="text-xs font-medium text-[var(--color-on-surface-variant)] px-1.5">

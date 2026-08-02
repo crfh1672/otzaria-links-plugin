@@ -158,6 +158,18 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
     setExpandedPaths(prev => ({ ...prev, [path]: !prev[path] }));
   };
 
+  const doesNodeMatchSearch = (node: BookNode): boolean => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+
+    const booksMatch = node.books?.some(b =>
+      b.title.toLowerCase().includes(q) || b.bookId.toLowerCase().includes(q)
+    );
+    if (booksMatch) return true;
+
+    return node.categories?.some(child => doesNodeMatchSearch(child)) ?? false;
+  };
+
   const handleRun = async () => {
     if (!selectedBookTitle || !commentaryContent.trim()) {
       notifyError('אנא בחר ספר פירוש או טען קובץ טקסט');
@@ -240,6 +252,9 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
       : node.books.filter(b => b.title.toLowerCase().includes(q) || b.bookId.toLowerCase().includes(q));
 
     if (!hasCategories && filteredBooks.length === 0 && q) {
+      return null;
+    }
+    if (q && !doesNodeMatchSearch(node)) {
       return null;
     }
 

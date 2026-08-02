@@ -2,6 +2,16 @@
  * Types & Interfaces according to Otzaria Links Generator Plugin SRS
  */
 
+/**
+ * A single Top-K candidate returned by the search algorithm.
+ * Stored on OtzariaLink so the UI can offer "next candidate" without re-running the search.
+ */
+export interface LinkCandidate {
+  lineNum: number;      // 1-based physical line index in the target source
+  score: number;        // Raw match score from searchLineInDoc
+  confidence: number;   // Normalised 0-100 confidence (same scale as OtzariaLink.confidence)
+}
+
 export interface OtzariaLink {
   line_index_1: number;       // 1-based physical line index of commentary
   line_index_2: number;       // 1-based physical line index of target source
@@ -17,6 +27,13 @@ export interface OtzariaLink {
   dhText?: string;            // Extracted Dibur Hamatchil
   confidence?: number;        // Confidence level score (0 - 100%)
   status?: 'approved' | 'pending'; // Approval state for link review
+
+  // Top-K alternative candidates (up to 3, sorted best-first).
+  // candidates[0] mirrors line_index_2 (the selected candidate).
+  // The user can cycle through candidates[1], candidates[2] without re-running the algorithm.
+  candidates?: LinkCandidate[];
+  /** Index into `candidates` that is currently displayed (0-based). Default 0. */
+  candidateIndex?: number;
 }
 
 export interface PluginConfig {

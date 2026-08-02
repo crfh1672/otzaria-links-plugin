@@ -1,6 +1,6 @@
 import { OtzariaLink, PluginConfig, DHHighlight } from '../types';
 import { expandAbbreviationsInText, DEFAULT_ABBREVIATIONS } from '../data/abbreviations';
-import { getWordSimilarity } from './fuzzyUtils';
+import { getWordSimilarity, getNikudFingerprint, levenshteinDistance } from './fuzzyUtils';
 import { getCombinedWordWeight, calculateDocumentIdfWeights } from './wordWeights';
 
 /**
@@ -33,11 +33,15 @@ export function calculateLinkConfidence(
  * Normalizes Hebrew text for search/comparison only.
  * Removes Nikud, teamim, HTML tags, and punctuation (except . and : when specified).
  */
+export function stripHtmlTags(text: string): string {
+  return text.replace(/<[^>]*>/g, ' ');
+}
+
 export function normalizeText(text: string, keepColonsAndDots: boolean = false): string {
   if (!text) return '';
   
   // 1. Normalize quotes and remove HTML tags
-  let cleaned = normalizeHebrewQuotes(text).replace(/<[^>]*>/g, ' ');
+  let cleaned = normalizeHebrewQuotes(stripHtmlTags(text));
   
   // 2. Remove Nikud and Cantillation (teamim): U+0591 to U+05C7
   cleaned = cleaned.replace(/[\u0591-\u05C7]/g, '');
@@ -96,20 +100,88 @@ export function areHeadersMatching(h1: string, h2: string): boolean {
 }
 
 /**
- * Keywords for Secondary Source routing
+ * Keywords for Secondary Source routing.
+ * Raw forms — normalized versions (RASHI_KEYWORDS_NORM / TOSAFOT_KEYWORDS_NORM) are
+ * computed once below, sorted longest-first, and used for startsWith matching against
+ * the already-normalized `normalizedPrefixLine`.
  */
 const RASHI_KEYWORDS = [
-  'רש"י', 'רשד"ה', 'רש"י ד"ה', 'ברש"י ד"ה', 'ברשד"ה', 'ברש"י', 'רש"י בד"ה', 'רשי', 'ברשי', 'פירש"י', 'פרש"י'
+  // With ד"ה / בד"ה — longest first
+  'פירש"י ד"ה', 'פירש"י בד"ה', 'פרש"י ד"ה', 'פרש"י בד"ה',
+  'רש"י ד"ה', 'רש"י בד"ה', 'ברש"י ד"ה', 'ברש"י בד"ה',
+  'רשי ד"ה', 'רשי בד"ה', 'ברשי ד"ה', 'ברשי בד"ה',
+  'רשד"ה', 'ברשד"ה', 'רשדה', 'ברשדה',
+  // Without ד"ה
+  'פירש"י', 'פרש"י',
+  'ברש"י', 'רש"י', 'ברשי', 'רשי'
 ];
 
-// Includes both quoted and plain variants for תוספות citations, e.g. תוס' and תוס
 const TOSAFOT_KEYWORDS = [
-  'תוספות', 'תוס', 'תוסות', 'תוספות ד"ה', 'תוס ד"ה', 'תוסות ד"ה', 'תוד"ה', 'תוס\'',
-  'תוס\' ד"ה', 'תוס\' בד"ה', 'בתוס\'', 'בתוס', 'בתוסות', 'בתוס\' ד"ה', 'בתוס ד"ה',
-  'בתוסות ד"ה', 'בתוסות', 'בתוספות', 'בתוספות ד"ה', 'בתוד"ה', 'תוספות בד"ה',
-  'בתוס\' בד"ה', 'בתוס ד"ה', 'בתוס בד"ה', 'בתו\' ד"ה', 'תו\' ד"ה', 'תו\' בד"ה',
-  'תו ד"ה', 'תו בד"ה'
+  // With ד"ה / בד"ה — longest first
+  'בתוספות ד"ה', 'בתוספות בד"ה', 'תוספות ד"ה', 'תוספות בד"ה',
+  'בתוסות ד"ה',  'בתוסות בד"ה',  'תוסות ד"ה',  'תוסות בד"ה',
+  'בתוס\' ד"ה',  'בתוס\' בד"ה',  'תוס\' ד"ה',  'תוס\' בד"ה',
+  'בתוס ד"ה',   'בתוס בד"ה',   'תוס ד"ה',   'תוס בד"ה',
+  'בתו\' ד"ה',  'בתו\' בד"ה',  'תו\' ד"ה',  'תו\' בד"ה',
+  'בתו ד"ה',   'בתו בד"ה',   'תו ד"ה',   'תו בד"ה',
+  'בתוד"ה', 'תוד"ה',
+  // Without ד"ה
+  'בתוספות', 'תוספות',
+  'בתוסות',  'תוסות',
+  'בתוס\'',  'תוס\'',
+  'בתוס',    'תוס',
+  'בתו\'',   'תו\'',
+  'בתו',     'תו'
 ];
+
+/**
+ * Keywords that indicate the commentary is citing the Gemara (primary Talmud source).
+ * These are used to route searches explicitly to the Gemara source document.
+ */
+const GEMARA_KEYWORDS = [
+  'בגמרא', "גמ'", 'גמרא'
+];
+
+/**
+ * Keywords that indicate the commentary is citing the Mishna (a separate source text).
+ * When detected the search is routed to the Mishna document rather than the Gemara.
+ */
+const MISHNA_KEYWORDS = [
+  "מתני'", 'מתניתין', 'מתניתן', 'במשנה', 'משנה'
+];
+
+/**
+ * Pre-normalized keyword lists (normalizeText applied, sorted longest-first).
+ * Built once at module load — never recalculated inside the hot loop.
+ */
+const _normalizeKw = (kw: string) =>
+  kw.replace(/[\u0591-\u05C7]/g, '')           // strip nikud
+    .replace(/[׳''´]/g, "'")                   // normalize single-quotes
+    .replace(/[״""]/g, '"')                    // normalize double-quotes
+    .replace(/[^\u05D0-\u05EA0-9\s'"]+/g, ' ') // keep only Hebrew + digits + quotes
+    .replace(/\s+/g, ' ').trim();
+
+const RASHI_KEYWORDS_NORM: string[] = [...new Set(RASHI_KEYWORDS.map(_normalizeKw))]
+  .sort((a, b) => b.length - a.length);   // longest first → no short prefix steals match
+
+const TOSAFOT_KEYWORDS_NORM: string[] = [...new Set(TOSAFOT_KEYWORDS.map(_normalizeKw))]
+  .sort((a, b) => b.length - a.length);
+
+const GEMARA_KEYWORDS_NORM: string[] = [...new Set(GEMARA_KEYWORDS.map(_normalizeKw))]
+  .sort((a, b) => b.length - a.length);
+
+const MISHNA_KEYWORDS_NORM: string[] = [...new Set(MISHNA_KEYWORDS.map(_normalizeKw))]
+  .sort((a, b) => b.length - a.length);
+
+/**
+ * Regex that strips a leading "source context" word (גמרא/גמ'/משנה/מתני' etc.)
+ * from the start of a commentary line before checking for secondary-source keywords.
+ *
+ * Use-case: "בגמרא תוספות ד"ה אמרי" → strip "בגמרא" → "תוספות ד"ה אמרי" → route to Tosafot.
+ *           "משנה רש"י ד"ה אמרי" → strip "משנה" → "רש"י ד"ה אמרי" → route to Rashi.
+ *           "גמ' ..." (no secondary keyword after) → keep original, route to primary source.
+ */
+const SOURCE_CONTEXT_STRIP_RE = /^(?:בגמרא|גמרא|גמ'|במשנה|משנה|מתניתין|מתניתן|מתני')\s*[:.\-]?\s*/i;
 
 const getSecondaryPath = (targetSecondary: 'rashi' | 'tosafot', targetBookName: string) =>
   targetSecondary === 'rashi'
@@ -132,9 +204,21 @@ export function normalizeHebrewQuotes(text: string): string {
 
 export function stripSecondaryPrefix(line: string): string {
   if (!line) return '';
-  let cleaned = normalizeHebrewQuotes(line.trim());
-  cleaned = cleaned.replace(/^(ברש"י\s+ד"ה|רש"י\s+ד"ה|רשד"ה|רשדה|ברשד"ה|ברשדה|ברש"י\s+בד"ה|רש"י\s+בד"ה|ברש"י|רש"י|רשי\s+ד"ה|רשי\s+דה|רשי|ברשי\s+ד"ה|ברשי\s+דה|ברשי|בתוספות\s+ד"ה|תוספות\s+ד"ה|בתוס'\s+ד"ה|תוס'\s+ד"ה|בתוס\s+ד"ה|תוס\s+ד"ה|בתוסות\s+ד"ה|תוסות\s+ד"ה|בתוד"ה|תוד"ה|בתוסות\s+בד"ה|תוספות\s+בד"ה|בתוס'\s+בד"ה|תוס'\s+בד"ה|בתוס\s+בד"ה|תוס\s+בד"ה|בתוס|תוס|בתוסות|תוסות|בתוספות|תוספות|בתוס'|תוס'|בתו'\s+ד"ה|תו'\s+ד"ה|תו'\s+בד"ה|תו\s+ד"ה|תו\s+בד"ה|שם\s+ד"ה|או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד|בד"ה|בדה)\s*[:.\-]?\s*/i, '');
+  // Step 1: normalize quotes and remove HTML + nikud before regex matching (fixes BUG-37)
+  let cleaned = normalizeHebrewQuotes(stripHtmlTags(line.trim()));
+  cleaned = cleaned.replace(/[\u0591-\u05C7]/g, '');
+
+  // Step 2: strip the secondary-source prefix.
+  // Alternatives are ordered longest-first so that e.g. "תוס' ד"ה" is matched
+  // before the shorter "תוס'" — preventing partial matches that leave stray tokens.
+  // JavaScript does not support the /x (verbose) flag, so this is one long line.
+  cleaned = cleaned.replace(/^(?:ברש"י\s+בד"ה|ברש"י\s+ד"ה|רש"י\s+בד"ה|רש"י\s+ד"ה|ברשי\s+בד"ה|ברשי\s+ד"ה|רשי\s+בד"ה|רשי\s+ד"ה|רשי\s+דה|ברשי\s+דה|רשד"ה|רשדה|ברשד"ה|ברשדה|פירש"י|פרש"י|ברש"י|רש"י|ברשי|רשי|בתוספות\s+בד"ה|בתוספות\s+ד"ה|תוספות\s+בד"ה|תוספות\s+ד"ה|בתוסות\s+בד"ה|בתוסות\s+ד"ה|תוסות\s+בד"ה|תוסות\s+ד"ה|בתוס'\s+בד"ה|בתוס'\s+ד"ה|תוס'\s+בד"ה|תוס'\s+ד"ה|בתוס\s+בד"ה|בתוס\s+ד"ה|תוס\s+בד"ה|תוס\s+ד"ה|בתו'\s+בד"ה|בתו'\s+ד"ה|תו'\s+בד"ה|תו'\s+ד"ה|בתו\s+בד"ה|בתו\s+ד"ה|תו\s+בד"ה|תו\s+ד"ה|בתוד"ה|תוד"ה|בתוספות|תוספות|בתוסות|תוסות|בתוס'|תוס'|בתוס|תוס|בתו'|תו'|שם\s+ד"ה|או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד|בד"ה|בדה)\s*[:.\-]?\s*/i, '');
+
+  // Step 3: strip a bare ד"ה / דה that may remain after removing only the source name
+  // e.g. line was "תוס' ד"ה אמרי" — "תוס'" stripped, "ד"ה" still leads
   cleaned = cleaned.replace(/^ד"ה\s*[:.\-]?\s*/i, '');
+  cleaned = cleaned.replace(/^דה\s+/i, '');
+
   return cleaned.trim();
 }
 
@@ -194,28 +278,36 @@ export function extractDiburHamatchil(
   line: string,
   delimiter?: string
 ): { dhText: string; cleanDh: string; isExplicitDelimiter: boolean } {
-  const normLine = normalizeText(line, true);
+  const cleanLine = stripHtmlTags(line);
+  const normLine = normalizeText(cleanLine, true);
   if (!normLine) return { dhText: '', cleanDh: '', isExplicitDelimiter: false };
 
   let dhPart = '';
   let explicit = false;
 
   // 1. If custom delimiter defined, non-empty, and present in line
-  if (delimiter && delimiter.trim() && line.includes(delimiter.trim())) {
+  if (delimiter && delimiter.trim() && cleanLine.includes(delimiter.trim())) {
     const trimmedDelim = delimiter.trim();
-    const idx = line.indexOf(trimmedDelim);
-    dhPart = line.substring(0, idx);
+    const idx = cleanLine.indexOf(trimmedDelim);
+    dhPart = cleanLine.substring(0, idx);
     explicit = true;
   }
-  // 2. Check for כו' or וכו'
-  else if (/\bו?כו'/i.test(line)) {
-    dhPart = line;
+  // 2. Check for כו' / וכו' / וגו' / וגומר / וכולי
+  else if (/\b(?:ו?כו'|וגו'|וגומר|וכולי)\b/i.test(cleanLine)) {
+    dhPart = cleanLine;
     explicit = true;
   }
   // 3. Fallback when no delimiter configured: do NOT truncate automatically on '.' or ':'
   else {
-    dhPart = line;
+    dhPart = cleanLine;
     explicit = false;
+  }
+
+  // Limit DH to a maximum of 12 words to avoid over-matching on long commentary lines
+  const MAX_DH_WORDS = 12;
+  const dhWords = dhPart.trim().split(/\s+/).filter(Boolean);
+  if (dhWords.length > MAX_DH_WORDS) {
+    dhPart = dhWords.slice(0, MAX_DH_WORDS).join(' ');
   }
 
   const cleanDh = normalizeText(dhPart);
@@ -257,11 +349,11 @@ export function runLinkingParser(
   const links: OtzariaLink[] = [];
   const dhHighlights: Record<number, DHHighlight> = {};
 
-  let previousLink: OtzariaLink | null = null;
-  let previousSecondaryType: 'rashi' | 'tosafot' | null = null;
-
   // Map source header segments to commentary header segments
   commDoc.segments.forEach(commSeg => {
+    let previousLink: OtzariaLink | null = null;
+    let previousSecondaryType: 'rashi' | 'tosafot' | null = null;
+
     // Find matching source segment
     const srcSeg = srcDoc.segments.find(s => areHeadersMatching(commSeg.headerTitle, s.headerTitle));
     const rashiSeg = rashiDoc ? rashiDoc.segments.find(s => areHeadersMatching(commSeg.headerTitle, s.headerTitle)) : null;
@@ -281,15 +373,22 @@ export function runLinkingParser(
 
       console.log(`\n📝 Line ${cLineIdx}: '${trimmedLine.substring(0, 50)}...' → normalizedPrefixLine='${normalizedPrefixLine.substring(0, 50)}...'`);
 
-      // Check routing to secondary sources (Step 4)
+      // Check routing to secondary sources (Step 4).
+      // First, strip any leading source-context prefix (גמרא / גמ' / משנה / מתני' etc.)
+      // so that "בגמרא תוספות ד"ה" correctly routes to Tosafot, not the primary source.
+      const strippedContextLine = normalizedPrefixLine.replace(SOURCE_CONTEXT_STRIP_RE, '').trim();
+      // Use the stripped version for keyword detection; fall back to full line if stripping
+      // left the line empty (meaning the whole line was just "גמ'" with no secondary keyword).
+      const lineForKeywordCheck = strippedContextLine || normalizedPrefixLine;
+
       let targetSecondary: 'rashi' | 'tosafot' | null = null;
       let explicitSecondaryTarget = false;
 
-      if (RASHI_KEYWORDS.some(kw => normalizedPrefixLine.startsWith(kw))) {
+      if (RASHI_KEYWORDS_NORM.some(kw => lineForKeywordCheck.startsWith(kw))) {
         targetSecondary = 'rashi';
         explicitSecondaryTarget = true;
         console.log(`  ✅ Detected Rashi keyword. normalizedPrefixLine='${normalizedPrefixLine}'`);
-      } else if (TOSAFOT_KEYWORDS.some(kw => normalizedPrefixLine.startsWith(normalizeText(kw, false)))) {
+      } else if (TOSAFOT_KEYWORDS_NORM.some(kw => lineForKeywordCheck.startsWith(kw))) {
         targetSecondary = 'tosafot';
         explicitSecondaryTarget = true;
         console.log(`  ✅ Detected Tosafot keyword. normalizedPrefixLine='${normalizedPrefixLine}'`);
@@ -334,15 +433,15 @@ export function runLinkingParser(
         fullLineText: string,
         idfMap?: Record<string, number>,
         prevLineNum?: number | null
-      ): { lineNum: number | null; matchedCount: number; expectedWeight: number } => {
+      ): { lineNum: number | null; matchedCount: number; expectedWeight: number; topK: {lineNum: number; score: number}[] } => {
         if (!docLines || docLines.length === 0) {
-          return { lineNum: null, matchedCount: 0, expectedWeight: 0 };
+          return { lineNum: null, matchedCount: 0, expectedWeight: 0, topK: [] };
         }
 
         const validStart = Math.max(1, Math.min(start, docLines.length));
         const validEnd = Math.max(validStart, Math.min(end, docLines.length));
 
-        const segments = fullLineText.split(/\bפ?ו?כו[׳']?/i).map(s => s.trim()).filter(Boolean);
+        const segments = fullLineText.split(/\bו?כו'/i).map(s => s.trim()).filter(Boolean);
         if (segments.length <= 1) {
           const cleanDh = normalizeText(fullLineText);
           return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum);
@@ -402,15 +501,16 @@ export function runLinkingParser(
             scoreSegment(expSeg1Words, docLineNorm, docWords)
           );
 
-          const minSeg1Threshold = Math.max(0.3, seg1ExpectedWeight * 0.3);
+          const minSeg1Threshold = Math.max(0.4, seg1ExpectedWeight * 0.4);
           if (score1 < minSeg1Threshold) continue;
 
-          let seqScore = score1 * 3.0; // Strong Anchor Weight bonus for First Anchor (beginning of citation)
+          let seqScore = score1 * 2.5; // Anchor Weight bonus for First Anchor
+          let foundSeq2 = !seg2Words.length;
+          let foundSeq3 = !seg3Words.length;
 
           if (seg2Words.length > 0) {
             let bestSeg2Score = 0;
-            // Expand window up to 50 lines for Talmudic passages containing כו'
-            for (let nextL = lNum; nextL <= Math.min(docLines.length, lNum + 50); nextL++) {
+            for (let nextL = lNum; nextL <= Math.min(docLines.length, lNum + 10); nextL++) {
               const nextRaw = docLines[nextL - 1];
               if (!nextRaw) continue;
               const nextNorm = normalizeText(nextRaw);
@@ -418,9 +518,26 @@ export function runLinkingParser(
               const s2 = scoreSegment(seg2Words, nextNorm, nextWords);
               if (s2 > bestSeg2Score) {
                 bestSeg2Score = s2;
+                if (s2 >= 0.4) foundSeq2 = true;
               }
             }
-            seqScore += bestSeg2Score * 1.5;
+            seqScore += bestSeg2Score * 1.2;
+          }
+
+          if (seg3Words.length > 0 && foundSeq2) {
+            let bestSeg3Score = 0;
+            for (let nextL = lNum; nextL <= Math.min(docLines.length, lNum + 15); nextL++) {
+              const nextRaw = docLines[nextL - 1];
+              if (!nextRaw) continue;
+              const nextNorm = normalizeText(nextRaw);
+              const nextWords = nextNorm.split(/\s+/).filter(Boolean);
+              const s3 = scoreSegment(seg3Words, nextNorm, nextWords);
+              if (s3 > bestSeg3Score) {
+                bestSeg3Score = s3;
+                if (s3 >= 0.4) foundSeq3 = true;
+              }
+            }
+            seqScore += bestSeg3Score * 1.0;
           }
 
           let distPenalty = 0;
@@ -443,10 +560,10 @@ export function runLinkingParser(
         }
 
         if (bestLine !== null) {
-          return { lineNum: bestLine, matchedCount: bestMatchedCount, expectedWeight };
+          return { lineNum: bestLine, matchedCount: bestMatchedCount, expectedWeight, topK: [{ lineNum: bestLine, score: bestMatchedCount }] };
         }
 
-        const cleanDh = normalizeText(segments[0]); // fallback to first segment instead of full text with כו'
+        const cleanDh = normalizeText(fullLineText);
         return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum);
       };
 
@@ -460,10 +577,10 @@ export function runLinkingParser(
         isExplicit: boolean,
         idfMap?: Record<string, number>,
         prevLineNum?: number | null
-      ): { lineNum: number | null; matchedCount: number; expectedWeight: number } => {
+      ): { lineNum: number | null; matchedCount: number; expectedWeight: number; topK: {lineNum: number; score: number}[] } => {
         if (!docLines || docLines.length === 0) {
           console.log(`    ⚠️ searchLineInDoc: docLines is empty!`);
-          return { lineNum: null, matchedCount: 0, expectedWeight: 0 };
+          return { lineNum: null, matchedCount: 0, expectedWeight: 0, topK: [] };
         }
 
         const validStart = Math.max(1, Math.min(start, docLines.length));
@@ -490,6 +607,19 @@ export function runLinkingParser(
           let maxMatchedCount = 0;
           let minDistance = Infinity;
           let linesChecked = 0;
+
+          // Nikud fingerprint of the search phrase (commentary side — usually empty since
+          // commentary text has no nikud, but kept for completeness).
+          // The fingerprint of each SOURCE candidate is computed on demand below and used
+          // as a tie-breaker when two candidates have identical match scores.
+          const searchFp = fullLineText.split(/\s+/).filter(Boolean)
+            .map(w => getNikudFingerprint(w)).join('');
+          let bestLineFpDist = Infinity; // fingerprint distance of current bestLine
+
+          // Top-K collection: keeps the best 3 candidates sorted by score descending.
+          // Each entry: { lineNum, score, fpDist, dist }
+          const TOP_K = 3;
+          const topCandidates: { lineNum: number; score: number; dist: number; fpDist: number }[] = [];
 
           for (let lNum = range.s; lNum <= range.e; lNum++) {
             const docLineRaw = docLines[lNum - 1];
@@ -551,18 +681,26 @@ export function runLinkingParser(
                 currentMatchCount = Math.max(matchedOrig, matchedExp);
               }
             } else {
-              // No explicit delimiter: find longest contiguous sequence of matching words starting from start of commentary line
+              // No explicit delimiter: find longest contiguous sequence of matching words.
+              // Constraint: the sequence must start within the first 3 words of the commentary
+              // line to avoid false positives from incidental word matches deep in the line.
+              // Also caps sourceWords to MAX_DH_WORDS (12) to bound the search space.
+              const MAX_DH_WORDS = 12;
               const calcContiguousScore = (sourceWords: string[], targetWords: string[]): number => {
+                // Only consider starting positions within the first 3 words of the commentary line
+                const maxStartIdx = Math.min(3, sourceWords.length);
+                // Cap source to 12 words maximum
+                const cappedSource = sourceWords.slice(0, MAX_DH_WORDS);
                 let maxSeqScore = 0;
-                for (let startWIdx = 0; startWIdx < sourceWords.length; startWIdx++) {
+                for (let startWIdx = 0; startWIdx < maxStartIdx; startWIdx++) {
                   for (let docWIdx = 0; docWIdx < targetWords.length; docWIdx++) {
                     let k = 0;
                     let seqScore = 0;
                     while (
-                      startWIdx + k < sourceWords.length &&
+                      startWIdx + k < cappedSource.length &&
                       docWIdx + k < targetWords.length
                     ) {
-                      const w1 = sourceWords[startWIdx + k];
+                      const w1 = cappedSource[startWIdx + k];
                       const w2 = targetWords[docWIdx + k];
                       const sim = getWordSimilarity(w1, w2, enableFuzzy);
                       if (sim <= 0) break;
@@ -605,28 +743,65 @@ export function runLinkingParser(
 
             if (currentMatchCount >= minThreshold) {
               const dist = Math.abs(lNum - range.s);
+
+              // Nikud fingerprint tie-breaker:
+              // When the source line carries nikud, compute a fingerprint and compare
+              // it to the search phrase fingerprint. A closer vowel pattern wins ties.
+              const candidateFp = docLines[lNum - 1]
+                ? docLines[lNum - 1].split(/\s+/).filter(Boolean)
+                    .map(w => getNikudFingerprint(w)).join('')
+                : '';
+              const fpDist = searchFp.length > 0 && candidateFp.length > 0
+                ? levenshteinDistance(searchFp, candidateFp)
+                : Infinity;
+
               if (currentMatchCount > maxMatchedCount) {
                 maxMatchedCount = currentMatchCount;
                 bestLine = lNum;
                 minDistance = dist;
-              } else if (currentMatchCount === maxMatchedCount && dist < minDistance) {
-                bestLine = lNum;
-                minDistance = dist;
+                bestLineFpDist = fpDist;
+              } else if (currentMatchCount === maxMatchedCount) {
+                // Primary tie-break: closer position
+                if (dist < minDistance) {
+                  bestLine = lNum;
+                  minDistance = dist;
+                  bestLineFpDist = fpDist;
+                } else if (dist === minDistance && fpDist < bestLineFpDist) {
+                  // Secondary tie-break: better nikud fingerprint match
+                  bestLine = lNum;
+                  bestLineFpDist = fpDist;
+                }
               }
+
+              // ── Top-K collection ──────────────────────────────────────────────
+              // Insert into topCandidates maintaining sorted order (best score first).
+              // Ties broken by dist then fpDist, same as bestLine logic above.
+              const insertIdx = topCandidates.findIndex(c =>
+                currentMatchCount > c.score ||
+                (currentMatchCount === c.score && dist < c.dist) ||
+                (currentMatchCount === c.score && dist === c.dist && fpDist < c.fpDist)
+              );
+              if (insertIdx !== -1) {
+                topCandidates.splice(insertIdx, 0, { lineNum: lNum, score: currentMatchCount, dist, fpDist });
+              } else if (topCandidates.length < TOP_K) {
+                topCandidates.push({ lineNum: lNum, score: currentMatchCount, dist, fpDist });
+              }
+              // Keep only TOP_K entries
+              if (topCandidates.length > TOP_K) topCandidates.length = TOP_K;
             }
           }
 
           console.log(`    ✓ searchLineInDoc checked ${linesChecked} lines, bestLine=${bestLine}, maxMatchedCount=${maxMatchedCount}`);
           if (bestLine !== null) {
-            return { lineNum: bestLine, matchedCount: maxMatchedCount, expectedWeight };
+            return { lineNum: bestLine, matchedCount: maxMatchedCount, expectedWeight, topK: topCandidates.map(c => ({ lineNum: c.lineNum, score: c.score })) };
           }
         }
 
-        return { lineNum: null, matchedCount: 0, expectedWeight };
+        return { lineNum: null, matchedCount: 0, expectedWeight: 0, topK: [] };
       };
 
-      let srcMatchRes = { lineNum: null as number | null, matchedCount: 0, expectedWeight: 0 };
-      let secMatchRes = { lineNum: null as number | null, matchedCount: 0, expectedWeight: 0 };
+      let srcMatchRes = { lineNum: null as number | null, matchedCount: 0, expectedWeight: 0, topK: [] as {lineNum: number; score: number}[] };
+      let secMatchRes = { lineNum: null as number | null, matchedCount: 0, expectedWeight: 0, topK: [] as {lineNum: number; score: number}[] };
 
       // Search in secondary source if routed (unless it's 'בא"ד', in which case we don't search, we inherit)
       if (!shouldInheritLine && targetSecondary === 'rashi' && rashiDoc) {
@@ -766,6 +941,20 @@ export function runLinkingParser(
         const confidence = calculateLinkConfidence(Boolean(isInherited), matchScore, wordLength, isExplicitDelimiter, expWeight);
         const status: 'approved' | 'pending' = confidence >= 85 ? 'approved' : 'pending';
 
+        // Build Top-K candidates list from whichever source produced the match.
+        // Each candidate gets its own confidence score so the UI can show it.
+        const rawTopK = explicitSecondaryTarget
+          ? secMatchRes.topK
+          : srcMatchRes.topK.length > 0
+            ? srcMatchRes.topK
+            : secMatchRes.topK;
+
+        const linkCandidates: import('../types').LinkCandidate[] = rawTopK.map(c => ({
+          lineNum: c.lineNum,
+          score: c.score,
+          confidence: calculateLinkConfidence(false, c.score, wordLength, isExplicitDelimiter, expWeight)
+        }));
+
         const newLink: OtzariaLink = {
           line_index_1: cLineIdx,
           line_index_2: matchedSourceLineNum,
@@ -778,7 +967,9 @@ export function runLinkingParser(
           isInherited,
           dhText: dhText || cleanDh,
           confidence,
-          status
+          status,
+          candidates: linkCandidates.length > 0 ? linkCandidates : undefined,
+          candidateIndex: 0
         };
 
         links.push(newLink);
