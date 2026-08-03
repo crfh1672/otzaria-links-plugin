@@ -453,7 +453,8 @@ export function runLinkingParser(
         end: number,
         fullLineText: string,
         idfMap?: Record<string, number>,
-        prevLineNum?: number | null
+        prevLineNum?: number | null,
+        requireStartAtFirstWord: boolean = false
       ): { lineNum: number | null; matchedCount: number; matchedWordCount: number; expectedWeight: number; topK: {lineNum: number; score: number}[] } => {
         if (!docLines || docLines.length === 0) {
           return { lineNum: null, matchedCount: 0, matchedWordCount: 0, expectedWeight: 0, topK: [] };
@@ -465,7 +466,7 @@ export function runLinkingParser(
         const segments = fullLineText.split(/(?:^|\s)ו?כו'(?:\s|$|[.,:;])/i).map(s => s.trim()).filter(Boolean);
         if (segments.length <= 1) {
           const cleanDh = normalizeText(fullLineText);
-          return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum);
+          return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum, requireStartAtFirstWord);
         }
 
         const seg1 = segments[0];
@@ -585,7 +586,7 @@ export function runLinkingParser(
         }
 
         const cleanDh = normalizeText(fullLineText);
-        return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum);
+        return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum, requireStartAtFirstWord);
       };
 
       // Primary search function: matches phrase or finds longest contiguous matching prefix from commentary line
@@ -836,35 +837,70 @@ export function runLinkingParser(
         ? (previousLink.secondary_line_index || null)
         : null;
 
+      // Bug #2 FIX: DH quotes containing כו' (e.g. "עד סוף כו' ומשם ואילך עבר זמנו כו' ומקמי הכי")
+      // are multi-segment quotes with omitted words in between. The plain contiguous matcher
+      // in searchLineInDoc breaks as soon as it hits the literal "כו'" token, so these almost
+      // always failed to match when routed to a secondary source (Rashi/Tosafot), even though
+      // the same DH pattern was already handled correctly for the primary source below via
+      // searchPrimaryWithFirstAnchor. We now apply the identical First-Anchor segment search
+      // to Rashi/Tosafot as well, so 'כו'-לינק'ing works consistently for every source book.
+      const hasKooSecondary = /(?:^|\s)ו?כו'(?:\s|$|[.,:;])/i.test(lineForDhExtraction) || /(?:^|\s)ו?כו'(?:\s|$|[.,:;])/i.test(trimmedLine);
+
       // Search in secondary source if routed (unless it's 'בא"ד', in which case we don't search, we inherit)
       if (!shouldInheritLine && targetSecondary === 'rashi' && rashiDoc) {
         console.log(`🔍 Searching for Rashi: keyword='${normalizedPrefixLine}', cleanDh='${cleanDh}', lineForDhExtraction='${lineForDhExtraction}'`);
-        secMatchRes = searchLineInDoc(
-          rashiDoc.lines,
-          rashiSeg ? rashiSeg.startLine : 1,
-          rashiSeg ? rashiSeg.endLine : rashiDoc.lines.length,
-          cleanDh,
-          lineForDhExtraction,
-          isExplicitDelimiter,
-          rashiIdfMap,
-          prevSecondaryLineNum,
-          true
-        );
+        if (hasKooSecondary) {
+          console.log(`  🎯 Applying First Anchor Priority for Rashi with כו' / וכו'`);
+          secMatchRes = searchPrimaryWithFirstAnchor(
+            rashiDoc.lines,
+            rashiSeg ? rashiSeg.startLine : 1,
+            rashiSeg ? rashiSeg.endLine : rashiDoc.lines.length,
+            lineForDhExtraction,
+            rashiIdfMap,
+            prevSecondaryLineNum,
+            true
+          );
+        } else {
+          secMatchRes = searchLineInDoc(
+            rashiDoc.lines,
+            rashiSeg ? rashiSeg.startLine : 1,
+            rashiSeg ? rashiSeg.endLine : rashiDoc.lines.length,
+            cleanDh,
+            lineForDhExtraction,
+            isExplicitDelimiter,
+            rashiIdfMap,
+            prevSecondaryLineNum,
+            true
+          );
+        }
         console.log(`  → Rashi search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
         matchedSecondaryLineNum = secMatchRes.lineNum;
       } else if (!shouldInheritLine && targetSecondary === 'tosafot' && tosafotDoc) {
         console.log(`🔍 Searching for Tosafot: keyword='${normalizedPrefixLine}', cleanDh='${cleanDh}', lineForDhExtraction='${lineForDhExtraction}'`);
-        secMatchRes = searchLineInDoc(
-          tosafotDoc.lines,
-          tosafotSeg ? tosafotSeg.startLine : 1,
-          tosafotSeg ? tosafotSeg.endLine : tosafotDoc.lines.length,
-          cleanDh,
-          lineForDhExtraction,
-          isExplicitDelimiter,
-          tosafotIdfMap,
-          prevSecondaryLineNum,
-          true
-        );
+        if (hasKooSecondary) {
+          console.log(`  🎯 Applying First Anchor Priority for Tosafot with כו' / וכו'`);
+          secMatchRes = searchPrimaryWithFirstAnchor(
+            tosafotDoc.lines,
+            tosafotSeg ? tosafotSeg.startLine : 1,
+            tosafotSeg ? tosafotSeg.endLine : tosafotDoc.lines.length,
+            lineForDhExtraction,
+            tosafotIdfMap,
+            prevSecondaryLineNum,
+            true
+          );
+        } else {
+          secMatchRes = searchLineInDoc(
+            tosafotDoc.lines,
+            tosafotSeg ? tosafotSeg.startLine : 1,
+            tosafotSeg ? tosafotSeg.endLine : tosafotDoc.lines.length,
+            cleanDh,
+            lineForDhExtraction,
+            isExplicitDelimiter,
+            tosafotIdfMap,
+            prevSecondaryLineNum,
+            true
+          );
+        }
         console.log(`  → Tosafot search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
         matchedSecondaryLineNum = secMatchRes.lineNum;
       }
