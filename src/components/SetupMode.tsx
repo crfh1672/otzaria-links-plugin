@@ -619,9 +619,6 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
               </div>
             </div>
           </div>
-          <div className="shrink-0 mt-2 flex items-center justify-center py-4 text-sm font-semibold text-[var(--color-on-surface)]">
-            {selectedBookTitle ? `ספר נבחר: ${selectedBookTitle}` : 'בחר ספר פירוש מימין כדי להתחיל'}
-          </div>
         </div>
 
         {/* Left Pane: Algorithm Settings (4 Cols) */}
@@ -719,12 +716,21 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
             </div>
           </div>
           
-          <div className="shrink-0 mt-2">
+        </div>
+
+        {/* Bottom Row: Message and Run Button */}
+        <div className="shrink-0 flex flex-col md:flex-row items-center justify-between gap-4 mt-6">
+          <div className="flex-1 text-center">
+            <span className="text-sm font-semibold text-[var(--color-on-surface)]">
+              {selectedBookTitle ? `ספר נבחר: ${selectedBookTitle}` : 'בחר ספר פירוש מימין כדי להתחיל'}
+            </span>
+          </div>
+          <div className="w-full md:w-1/3">
             <button
               type="button"
               onClick={handleRun}
               disabled={!selectedBookTitle || isProcessing}
-              className="w-full inline-flex items-center justify-center gap-2 px-5 py-4 text-sm font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:brightness-105 active:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-[var(--radius-md)] transition-all shadow-md"
+              className="w-full inline-flex items-center justify-center gap-2 px-6 py-4 text-sm font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:brightness-105 active:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-[var(--radius-md)] transition-all shadow-lg"
             >
               {isProcessing ? (
                 <span>מעבד מיפוי...</span>
@@ -736,7 +742,6 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
               )}
             </button>
           </div>
-
         </div>
       </div>
 
