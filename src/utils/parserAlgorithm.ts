@@ -830,6 +830,12 @@ export function runLinkingParser(
       let srcMatchRes = { lineNum: null as number | null, matchedCount: 0, matchedWordCount: 0, expectedWeight: 0, topK: [] as {lineNum: number; score: number}[] };
       let secMatchRes = { lineNum: null as number | null, matchedCount: 0, matchedWordCount: 0, expectedWeight: 0, topK: [] as {lineNum: number; score: number}[] };
 
+      // Bug #1 FIX: Calculate separate "previous line index" for secondary sources.
+      // We only want to use the previous line of the SAME secondary document (e.g. Rashi vs Rashi).
+      const prevSecondaryLineNum = (previousLink && previousLink.secondaryTarget === targetSecondary)
+        ? (previousLink.secondary_line_index || null)
+        : null;
+
       // Search in secondary source if routed (unless it's 'בא"ד', in which case we don't search, we inherit)
       if (!shouldInheritLine && targetSecondary === 'rashi' && rashiDoc) {
         console.log(`🔍 Searching for Rashi: keyword='${normalizedPrefixLine}', cleanDh='${cleanDh}', lineForDhExtraction='${lineForDhExtraction}'`);
@@ -841,7 +847,7 @@ export function runLinkingParser(
           lineForDhExtraction,
           isExplicitDelimiter,
           rashiIdfMap,
-          previousLink ? previousLink.line_index_2 : null,
+          prevSecondaryLineNum,
           true
         );
         console.log(`  → Rashi search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
@@ -856,7 +862,7 @@ export function runLinkingParser(
           lineForDhExtraction,
           isExplicitDelimiter,
           tosafotIdfMap,
-          previousLink ? previousLink.line_index_2 : null,
+          prevSecondaryLineNum,
           true
         );
         console.log(`  → Tosafot search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
@@ -865,6 +871,12 @@ export function runLinkingParser(
 
       // Search in primary source segment unless the line explicitly targets a secondary source or is 'בא"ד' (which means inherit previous).
       if (!explicitSecondaryTarget && !shouldInheritLine) {
+        // Bug #1 (Part 2) FIX: Ensure we only use the last PRIMARY source line for distance hint.
+        // If previousLink was Rashi/Tosafot, line_index_2 is NOT a primary source index.
+        const prevPrimaryLineNum = (previousLink && !previousLink.secondaryTarget)
+          ? previousLink.line_index_2
+          : (lastMatchedSrcLineIndex || null);
+
         console.log(`🔍 Searching PRIMARY source: lineForDhExtraction='${lineForDhExtraction}', cleanDh='${cleanDh}', isExplicit=${isExplicitDelimiter}`);
         const hasKoo = /(?:^|\s)ו?כו'(?:\s|$|[.,:;])/i.test(lineForDhExtraction) || /(?:^|\s)ו?כו'(?:\s|$|[.,:;])/i.test(trimmedLine);
         if (hasKoo) {
@@ -875,7 +887,7 @@ export function runLinkingParser(
             srcSeg ? srcSeg.endLine : srcDoc.lines.length,
             lineForDhExtraction,
             srcIdfMap,
-            lastMatchedSrcLineIndex || (previousLink ? previousLink.line_index_2 : null)
+            prevPrimaryLineNum
           );
         } else {
           srcMatchRes = searchLineInDoc(
@@ -886,7 +898,7 @@ export function runLinkingParser(
             lineForDhExtraction,
             isExplicitDelimiter,
             srcIdfMap,
-            lastMatchedSrcLineIndex || (previousLink ? previousLink.line_index_2 : null),
+            prevPrimaryLineNum,
             false
           );
         }
@@ -902,7 +914,9 @@ export function runLinkingParser(
 
       // If secondary source line was found, but primary source line wasn't matched directly:
       if (!explicitSecondaryTarget && matchedSecondaryLineNum && !matchedSourceLineNum) {
-        let mappedPrimaryLine = previousLink?.line_index_2 || lastMatchedSrcLineIndex || (srcSeg ? srcSeg.startLine : 1);
+        let mappedPrimaryLine = (previousLink && !previousLink.secondaryTarget ? previousLink.line_index_2 : null)
+          || lastMatchedSrcLineIndex 
+          || (srcSeg ? srcSeg.startLine : 1);
         
         if (targetSecondary === 'rashi' && rashiLinks && rashiLinks.length > 0) {
            const link = rashiLinks.find(l => l.line_index_1 === matchedSecondaryLineNum);
@@ -943,7 +957,10 @@ export function runLinkingParser(
 
       // If we got a source line match, create OtzariaLink
       if (matchedSourceLineNum) {
-        lastMatchedSrcLineIndex = matchedSourceLineNum;
+        // Bug #2 FIX: Only update the last matched PRIMARY source index if the match was actually in the primary source.
+        if (!targetSecondary) {
+          lastMatchedSrcLineIndex = matchedSourceLineNum;
+        }
         
         // Fallback for older UI-created links or incomplete inheritance
         if (targetSecondary && !matchedSecondaryLineNum) {
