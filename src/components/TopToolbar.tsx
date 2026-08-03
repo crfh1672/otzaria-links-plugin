@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Save, FolderOpen, Download, ArrowLeftRight, RotateCcw, ListTree, Filter } from 'lucide-react';
+import { Save, FolderOpen, Download, ArrowLeftRight, RotateCcw, ListTree, Filter, Menu } from 'lucide-react';
 import JSZip from 'jszip';
 import { SessionState } from '../types';
 import { formatLineWithDH, parseDocumentSegments, normalizeText } from '../utils/parserAlgorithm';
@@ -191,9 +191,25 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
   return (
     <header className="sticky top-0 z-40 w-full bg-[var(--color-surface-container-high)] text-[var(--color-on-surface)] shadow-xs border-b border-[var(--color-outline)]" dir="rtl">
-      <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
-        {/* Rightmost: Books Tag */}
-        <div className="flex items-center gap-2 bg-[var(--color-surface)] px-3 py-1.5 rounded-xl border border-[var(--color-outline)] shadow-2xs shrink-0">
+      <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center gap-3">
+        {/* Rightmost: Hamburger menu */}
+        <button
+          onClick={onToggleNavDrawer}
+          className={`inline-flex items-center justify-center p-2 rounded-[var(--radius-sm)] transition-colors shrink-0 ${
+            mode === 'setup'
+              ? 'opacity-40 pointer-events-none text-[var(--color-on-surface-variant)]'
+              : isNavDrawerOpen
+                ? 'bg-[var(--color-primary-subtle)] text-[var(--color-primary)]'
+                : 'text-[var(--color-on-surface)] hover:bg-[var(--color-secondary-subtle)]'
+          }`}
+          title="תפריט ניווט"
+          aria-label="תפריט המבורגר"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
+        {/* Books Tag */}
+        <div className="flex items-center gap-2 px-1 py-1.5 shrink-0">
           <span className="text-xs font-bold text-[var(--color-primary)] max-w-[180px] truncate" title={commentaryName}>
             {commentaryName}
           </span>
@@ -208,8 +224,8 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           )}
         </div>
         
-        {/* Actions Group (Right-Center) */}
-        <div className="flex items-center justify-end flex-1 mr-4 gap-1">
+        {/* Actions Group (Leftmost) */}
+        <div className="flex items-center justify-end flex-1 gap-1">
           <button
             onClick={handleExportZip}
             disabled={!session}
@@ -254,7 +270,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
               {isFilterOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setIsFilterOpen(false)} />
-                  <div className="absolute top-[calc(100%+6px)] right-0 w-48 bg-[var(--color-surface-container-highest)] rounded-[var(--radius-md)] shadow-lg border border-[var(--color-outline)] p-2 z-50 flex flex-col gap-1">
+                  <div className="absolute top-[calc(100%+6px)] left-0 w-48 bg-[var(--color-surface-container-highest)] rounded-[var(--radius-md)] shadow-lg border border-[var(--color-outline)] p-2 z-50 flex flex-col gap-1">
                     <button
                       className={`text-right px-3 py-2 text-xs font-semibold rounded-[var(--radius-sm)] ${sortMode === 'book_order' ? 'bg-[var(--color-primary-subtle)] text-[var(--color-primary)]' : 'text-[var(--color-on-surface)] hover:bg-[var(--color-secondary-subtle)]'}`}
                       onClick={() => { onSortModeChange('book_order'); setIsFilterOpen(false); }}
@@ -290,23 +306,6 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             </button>
           )}
         </div>
-
-        {/* Leftmost: Hamburger menu */}
-        <button
-          onClick={onToggleNavDrawer}
-          className={`inline-flex items-center justify-center p-2 rounded-[var(--radius-sm)] transition-colors shrink-0 ${
-            mode === 'setup'
-              ? 'opacity-40 pointer-events-none bg-[var(--color-surface-container-low)] text-[var(--color-on-surface-variant)]'
-              : isNavDrawerOpen
-                ? 'bg-[var(--color-primary)] text-[var(--color-on-primary)] border border-[var(--color-primary)]'
-                : 'bg-[var(--color-surface)] text-[var(--color-on-surface)] border border-[var(--color-outline)] hover:bg-[var(--color-outline-variant)]'
-          }`}
-          title="תפריט ניווט"
-          aria-label="תפריט המבורגר"
-        >
-          <ListTree className="w-5 h-5" />
-        </button>
-
       </div>
     </header>
   );

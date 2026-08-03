@@ -215,6 +215,25 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
     setExpandedPaths(prev => ({ ...prev, [path]: !prev[path] }));
   };
 
+  
+  const getFlatBooksMatchingSearch = (node: BookNode, query: string): Array<{bookId: string, title: string, path: string}> => {
+    let results: Array<{bookId: string, title: string, path: string}> = [];
+    const q = query.toLowerCase().trim();
+    if (node.books) {
+      for (const b of node.books) {
+        if (b.title.toLowerCase().includes(q) || b.bookId.toLowerCase().includes(q)) {
+          results.push({ bookId: b.bookId, title: b.title, path: node.title === 'ספריית אוצריא' ? '' : node.title });
+        }
+      }
+    }
+    if (node.categories) {
+      for (const child of node.categories) {
+        results = results.concat(getFlatBooksMatchingSearch(child, query));
+      }
+    }
+    return results;
+  };
+
   const doesNodeMatchSearch = (node: BookNode): boolean => {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
@@ -360,12 +379,12 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6" dir="rtl">
+    <div className="max-w-7xl mx-auto p-4 md:p-6 h-[calc(100vh-100px)] flex flex-col" dir="rtl">
       {/* Split Screen Layout - 3 columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0 items-stretch">
         
         {/* Right Pane: Book Browser (4 Cols) */}
-        <div className="lg:col-span-4 bg-[var(--color-surface)] text-[var(--color-on-surface)] rounded-[var(--radius-md)] shadow-xs border border-[var(--color-outline-variant)] flex flex-col h-[620px] overflow-hidden">
+        <div className="lg:col-span-4 bg-[var(--color-surface)] text-[var(--color-on-surface)] rounded-[var(--radius-md)] shadow-xs border border-[var(--color-outline-variant)] flex flex-col h-full overflow-hidden">
           {/* Top Bar of Right Pane */}
           <div className="p-3.5 border-b border-[var(--color-outline)] flex flex-col gap-2 shrink-0">
             <div className="flex items-center justify-between w-full">
@@ -402,7 +421,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="חיפוש מהיר בספרים..."
-                className="w-full pr-8 pl-3 py-1.5 text-xs bg-[var(--color-surface-container-low)] border border-[var(--color-outline)] rounded-[var(--radius-sm)] focus:outline-none focus:border-[var(--color-primary)] text-[var(--color-on-surface)]"
+                className="w-full pr-8 pl-3 py-1.5 text-xs bg-[var(--color-surface-container-high)] border border-[var(--color-outline)] rounded-[var(--radius-sm)] focus:outline-none focus:border-[var(--color-primary)] text-[var(--color-on-surface)]"
               />
             </div>
           </div>
@@ -439,11 +458,38 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
                 <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--color-on-surface-variant)] mb-3 px-1">
                   עץ הספרים באוצריא
                 </h3>
+                
                 {loadingTree ? (
                   <div className="py-12 text-center text-[var(--color-on-surface-variant)] text-xs">טוען את עץ הספרייה...</div>
                 ) : tree ? (
-                  renderTreeNode(tree)
+                  searchQuery.trim() ? (
+                    <div className="space-y-1">
+                      {getFlatBooksMatchingSearch(tree, searchQuery).map(book => (
+                        <button
+                          key={book.bookId}
+                          onClick={() => handleSelectBookFromTree(book.bookId, book.title)}
+                          className={`flex items-center gap-2 w-full text-right py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                            selectedBookTitle === book.title
+                              ? 'bg-[var(--color-primary-subtle)] text-[var(--color-primary)] font-bold'
+                              : 'hover:bg-[var(--color-secondary-subtle)] text-[var(--color-on-surface)]'
+                          }`}
+                        >
+                          <BookOpen className="w-4 h-4 shrink-0 opacity-80" />
+                          <div className="flex flex-col items-start truncate">
+                            <span className="truncate">{book.title}</span>
+                            {book.path && <span className="text-[10px] text-[var(--color-on-surface-variant)] truncate">{book.path}</span>}
+                          </div>
+                        </button>
+                      ))}
+                      {getFlatBooksMatchingSearch(tree, searchQuery).length === 0 && (
+                        <div className="text-center text-xs text-[var(--color-on-surface-variant)] py-4">לא נמצאו ספרים התואמים לחיפוש</div>
+                      )}
+                    </div>
+                  ) : (
+                    renderTreeNode(tree)
+                  )
                 ) : (
+
                   <div className="text-xs text-[var(--color-on-surface-variant)] p-4">לא ניתן לטעון את עץ הספרים</div>
                 )}
               </div>
@@ -452,7 +498,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
         </div>
 
         {/* Middle Pane: Configuration & Settings (4 Cols) */}
-        <div className="lg:col-span-4 bg-[var(--color-surface)] text-[var(--color-on-surface)] rounded-[var(--radius-md)] shadow-xs border border-[var(--color-outline-variant)] flex flex-col min-h-max">
+        <div className="lg:col-span-4 bg-[var(--color-surface)] text-[var(--color-on-surface)] rounded-[var(--radius-md)] shadow-xs border border-[var(--color-outline-variant)] flex flex-col h-full overflow-hidden">
           <div className="p-3.5 border-b border-[var(--color-outline-variant)] flex items-center gap-2">
             <Settings2 className="w-5 h-5 text-[var(--color-primary)]" />
             <h3 className="text-sm font-bold text-[var(--color-on-surface)]">
@@ -466,7 +512,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
               <label className="block text-[var(--color-on-surface-variant)] text-xs font-semibold">
                 קטגוריית מקור
               </label>
-              <div className="flex bg-[var(--color-surface-container-low)] rounded-[var(--radius-md)] border border-[var(--color-outline)] p-1">
+              <div className="flex bg-[var(--color-surface-container-high)] rounded-[var(--radius-md)] border border-[var(--color-outline)] p-1">
                 <button
                   type="button"
                   onClick={() => setCategory('tanakh')}
@@ -554,97 +600,106 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
         </div>
 
         {/* Left Pane: Algorithm Settings (4 Cols) */}
-        <div className="lg:col-span-4 flex flex-col gap-4">
+        <div className="lg:col-span-4 flex flex-col gap-4 h-full">
           
-          {/* Toggles */}
-          {/* Rashei Teivot Abbreviation Expansion Settings */}
-          <div className="bg-[var(--color-surface)] border border-[var(--color-outline-variant)] rounded-[var(--radius-md)] p-4 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-[var(--color-primary-subtle)] flex items-center justify-center shrink-0">
-                   <Quote className="w-4 h-4 text-[var(--color-primary)]" />
+          <div className="bg-[var(--color-surface)] text-[var(--color-on-surface)] rounded-[var(--radius-md)] shadow-xs border border-[var(--color-outline-variant)] flex flex-col flex-1 overflow-y-auto">
+            <div className="p-3.5 border-b border-[var(--color-outline-variant)] flex items-center gap-2 shrink-0">
+              <Settings2 className="w-5 h-5 text-[var(--color-primary)]" />
+              <h3 className="text-sm font-bold text-[var(--color-on-surface)]">
+                הגדרות אלגוריתם
+              </h3>
+            </div>
+            <div className="p-5 flex flex-col gap-5">
+              {/* Rashei Teivot Abbreviation Expansion Settings */}
+              <div className="border border-[var(--color-outline-variant)] rounded-[var(--radius-md)] p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                   <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[var(--color-primary-subtle)] flex items-center justify-center shrink-0">
+                       <Quote className="w-4 h-4 text-[var(--color-primary)]" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="block text-sm font-bold text-[var(--color-on-surface)]">
+                        תמיכה בפענוח ר"ת
+                      </span>
+                    </div>
+                  </div>
+                  <ToggleSwitch 
+                    checked={useAbbreviationExpansion}
+                    onChange={setUseAbbreviationExpansion}
+                    ariaLabel="תמיכה בפענוח רתיבות"
+                  />
                 </div>
-                <div className="space-y-0.5">
-                  <span className="block text-sm font-bold text-[var(--color-on-surface)]">
-                    תמיכה בפענוח ר"ת
-                  </span>
+                
+                {useAbbreviationExpansion && (
+                  <div className="flex items-center justify-between gap-2 mt-1">
+                    <span className="text-xs text-[var(--color-on-surface-variant)]">
+                      מילון: {customAbbreviations ? 'מותאם אישית' : 'מורחב מובנה'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowAbbrModal(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold bg-[var(--color-secondary-subtle)] text-[var(--color-on-surface)] border border-[var(--color-outline)] hover:bg-[var(--color-outline-variant)] rounded-[var(--radius-pill)] transition-colors"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span>ניהול / צפייה במילון</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Fuzzy Matching Settings */}
+              <div className="border border-[var(--color-outline-variant)] rounded-[var(--radius-md)] p-4">
+                <div className="flex items-center justify-between">
+                   <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[var(--color-primary-subtle)] flex items-center justify-center shrink-0">
+                       <ArrowLeftRight className="w-4 h-4 text-[var(--color-primary)]" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="block text-sm font-bold text-[var(--color-on-surface)]">
+                        השוואה גמישה קלה
+                      </span>
+                    </div>
+                  </div>
+                   <ToggleSwitch 
+                    checked={useFuzzyMatching}
+                    onChange={setUseFuzzyMatching}
+                    ariaLabel="השוואה גמישה קלה"
+                  />
                 </div>
               </div>
-              <ToggleSwitch 
-                checked={useAbbreviationExpansion}
-                onChange={setUseAbbreviationExpansion}
-                ariaLabel="תמיכה בפענוח רתיבות"
-              />
-            </div>
-            
-            {useAbbreviationExpansion && (
-              <div className="flex items-center justify-between gap-2 mt-1">
-                <span className="text-xs text-[var(--color-on-surface-variant)]">
-                  מילון: מורחב מובנה
+
+              {/* Word Weighting & TF-IDF Settings */}
+              <div className="border border-[var(--color-outline-variant)] rounded-[var(--radius-md)] p-4 flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                   <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[var(--color-primary-subtle)] flex items-center justify-center shrink-0">
+                       <Scale className="w-4 h-4 text-[var(--color-primary)]" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="block text-sm font-bold text-[var(--color-on-surface)]">
+                        שקילת מילים
+                      </span>
+                    </div>
+                  </div>
+                   <ToggleSwitch 
+                    checked={useWordWeighting}
+                    onChange={setUseWordWeighting}
+                    ariaLabel="שקילת מילים"
+                  />
+                </div>
+                <span className="block text-xs text-[var(--color-on-surface-variant)] mt-1 mr-11">
+                  הפחתת משקל מילים שכיחות
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setShowAbbrModal(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold bg-[var(--color-secondary-subtle)] text-[var(--color-on-surface)] border border-[var(--color-outline)] hover:bg-[var(--color-outline-variant)] rounded-[var(--radius-pill)] transition-colors"
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  <span>ניהול / צפייה במילון</span>
-                </button>
               </div>
-            )}
-          </div>
-
-          {/* Fuzzy Matching Settings */}
-          <div className="bg-[var(--color-surface)] border border-[var(--color-outline-variant)] rounded-[var(--radius-md)] p-4">
-            <div className="flex items-center justify-between">
-               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-[var(--color-primary-subtle)] flex items-center justify-center shrink-0">
-                   <ArrowLeftRight className="w-4 h-4 text-[var(--color-primary)]" />
-                </div>
-                <div className="space-y-0.5">
-                  <span className="block text-sm font-bold text-[var(--color-on-surface)]">
-                    השוואה גמישה קלה
-                  </span>
-                </div>
-              </div>
-               <ToggleSwitch 
-                checked={useFuzzyMatching}
-                onChange={setUseFuzzyMatching}
-                ariaLabel="השוואה גמישה קלה"
-              />
             </div>
-          </div>
-
-          {/* Word Weighting & TF-IDF Settings */}
-          <div className="bg-[var(--color-surface)] border border-[var(--color-outline-variant)] rounded-[var(--radius-md)] p-4 flex flex-col gap-1">
-            <div className="flex items-center justify-between">
-               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-[var(--color-primary-subtle)] flex items-center justify-center shrink-0">
-                   <Scale className="w-4 h-4 text-[var(--color-primary)]" />
-                </div>
-                <div className="space-y-0.5">
-                  <span className="block text-sm font-bold text-[var(--color-on-surface)]">
-                    שקילת מילים
-                  </span>
-                </div>
-              </div>
-               <ToggleSwitch 
-                checked={useWordWeighting}
-                onChange={setUseWordWeighting}
-                ariaLabel="שקילת מילים"
-              />
-            </div>
-            <span className="block text-xs text-[var(--color-on-surface-variant)] mt-1 mr-11">
-              הפחתת משקל מילים שכיחות
-            </span>
           </div>
           
-          <div className="mt-auto pt-4">
+          <div className="shrink-0 mt-2">
             <button
               type="button"
               onClick={handleRun}
               disabled={!selectedBookTitle || isProcessing}
-              className="w-full inline-flex items-center justify-center gap-2 px-5 py-3.5 text-sm font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:brightness-105 active:opacity-100 disabled:opacity-45 disabled:cursor-not-allowed rounded-[var(--radius-md)] transition-all"
+              className="w-full inline-flex items-center justify-center gap-2 px-5 py-4 text-sm font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:brightness-105 active:opacity-100 disabled:opacity-45 disabled:cursor-not-allowed rounded-[var(--radius-md)] transition-all shadow-md"
             >
               {isProcessing ? (
                 <span>מעבד מיפוי...</span>

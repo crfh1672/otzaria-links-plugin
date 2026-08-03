@@ -90,7 +90,12 @@ export const AbbreviationsModal: React.FC<AbbreviationsModalProps> = ({
   };
 
   const handleSaveAndClose = () => {
-    onSaveDict(dict);
+    if (dict === DEFAULT_ABBREVIATIONS) {
+      // @ts-ignore
+      onSaveDict(undefined);
+    } else {
+      onSaveDict(dict);
+    }
     onClose();
   };
 
@@ -156,7 +161,7 @@ export const AbbreviationsModal: React.FC<AbbreviationsModalProps> = ({
         </div>
 
         {/* Modal Toolbar: Search, Upload JSON, Export, Reset */}
-        <div className="p-3 bg-[var(--color-surface-container-low)] border-b border-[var(--color-outline)] flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <div className="p-3 bg-[var(--color-surface-container-high)] border-b border-[var(--color-outline)] flex flex-wrap items-center justify-between gap-2 shrink-0">
           <div className="relative flex-1 min-w-[220px]">
             <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-on-surface-variant)]" />
             <input
@@ -211,7 +216,7 @@ export const AbbreviationsModal: React.FC<AbbreviationsModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 md:p-5 flex-1 overflow-y-auto space-y-4 bg-[var(--color-surface-container-low)]">
+        <div className="p-4 md:p-5 flex-1 overflow-y-auto space-y-4 bg-[var(--color-surface-container-high)]">
           {/* Add New Entry Form Drawer */}
           {isAddingNew && (
             <div className="bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-primary)] shadow-md space-y-3">
@@ -334,7 +339,7 @@ export const AbbreviationsModal: React.FC<AbbreviationsModalProps> = ({
                         }
                       }}
                       onChange={e => setNewOptionInput(e.target.value)}
-                      className="flex-1 px-2.5 py-1 text-[11px] bg-[var(--color-surface-container-low)] border border-[var(--color-outline-variant)] rounded-lg focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] text-[var(--color-on-surface)]"
+                      className="flex-1 px-2.5 py-1 text-[11px] bg-[var(--color-surface-container-high)] border border-[var(--color-outline-variant)] rounded-lg focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] text-[var(--color-on-surface)]"
                     />
                   </div>
                 </div>

@@ -176,7 +176,7 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
         </div>
 
         {/* Scrollable Content Body */}
-        <div className="p-4 md:p-5 space-y-4 overflow-y-auto flex-1 bg-[var(--color-surface-container-low)]">
+        <div className="p-4 md:p-5 space-y-4 overflow-y-auto flex-1 bg-[var(--color-surface-container-high)]">
           {/* Commentary Line Text Box */}
           <div className="bg-[var(--color-surface)] p-3.5 md:p-4 rounded-xl border border-[var(--color-outline-variant)] shadow-2xs space-y-1">
             <span className="block text-xs font-bold text-[var(--color-on-surface-variant)]">טקסט הפירוש (שורה {commLineIndex}):</span>
@@ -197,7 +197,7 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
               </div>
 
               {currentTabSegments.length > 0 ? (
-                <div className="flex items-center gap-1.5 bg-[var(--color-surface-container-low)] px-3 py-1.5 rounded-xl border border-[var(--color-outline)] shrink-0">
+                <div className="flex items-center gap-1.5 bg-[var(--color-surface-container-high)] px-3 py-1.5 rounded-xl border border-[var(--color-outline)] shrink-0">
                   <Filter className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
                   <span className="font-bold text-[var(--color-on-surface-variant)] text-[11px] shrink-0">סינון כותרת:</span>
                   <select
@@ -360,7 +360,7 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
                   const lineKey = `${activeTab}-${lineIdx1}`;
                   const isExpanded = expandedLines[lineKey];
 
-                  let activeCardStyle = 'bg-[var(--color-surface)] border-[var(--color-outline-variant)] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-container-low)]';
+                  let activeCardStyle = 'bg-[var(--color-surface)] border-[var(--color-outline-variant)] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-container-high)]';
                   if (isSelected) {
                     activeCardStyle = 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 ring-2 ring-emerald-500/30 text-emerald-950 dark:text-emerald-100';
                   }

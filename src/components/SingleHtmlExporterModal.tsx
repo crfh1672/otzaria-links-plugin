@@ -119,7 +119,7 @@ ${document.documentElement.innerHTML}
         </div>
 
         {/* Content */}
-        <div className="p-5 space-y-4 text-xs text-[var(--color-on-surface)] bg-[var(--color-surface-container-low)]">
+        <div className="p-5 space-y-4 text-xs text-[var(--color-on-surface)] bg-[var(--color-surface-container-high)]">
           <div className="bg-[var(--color-primary-subtle)] border border-[var(--color-outline)] p-3.5 rounded-xl space-y-1.5">
             <h4 className="font-bold text-[var(--color-on-surface)] flex items-center gap-1.5">
               <Github className="w-4 h-4 text-current" />

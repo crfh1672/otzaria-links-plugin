@@ -49,6 +49,9 @@ export default function App() {
 
       if (cs.primary) r.style.setProperty('--color-primary-subtle', hexToRgba(cs.primary, 0.12));
       if (cs.secondary) r.style.setProperty('--color-secondary-subtle', hexToRgba(cs.secondary, 0.12));
+      
+      if (cs.surface) document.body.style.background = cs.surface;
+      if (cs.onSurface) document.body.style.color = cs.onSurface;
 
       document.body.classList.toggle('dark-mode', theme.mode === 'dark');
 
@@ -184,7 +187,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-[var(--color-surface)] text-[var(--color-on-surface)] flex flex-col font-sans">
       {/* Top Fixed Toolbar */}
       <TopToolbar
         session={session}

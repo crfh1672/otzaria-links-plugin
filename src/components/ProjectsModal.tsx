@@ -72,7 +72,7 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({ onLoadSession, onC
         </div>
 
         {/* Content */}
-        <div className="p-4 overflow-y-auto space-y-3 flex-1 bg-[var(--color-surface-container-low)]">
+        <div className="p-4 overflow-y-auto space-y-3 flex-1 bg-[var(--color-surface-container-high)]">
           {loading ? (
             <div className="py-12 text-center text-xs text-[var(--color-on-surface-variant)]">טוען פרויקטים שמורים...</div>
           ) : sessions.length === 0 ? (

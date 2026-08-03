@@ -744,7 +744,7 @@ export const EditMode: React.FC<EditModeProps> = ({
     const isUnlinked = !linkObj;
     const isInherited = linkObj?.isInherited;
 
-    let bgStyle = "bg-[var(--color-surface-container-low)] text-[var(--color-on-surface)] border-[var(--color-outline)]";
+    let bgStyle = "bg-[var(--color-surface-container-high)] text-[var(--color-on-surface)] border-[var(--color-outline)]";
     if (isUnlinked) {
       bgStyle = "bg-rose-50/80 dark:bg-rose-950/30 text-rose-950 dark:text-rose-100 border-rose-300/80 dark:border-rose-900/60";
     } else if (isInherited) {
@@ -1145,7 +1145,7 @@ export const EditMode: React.FC<EditModeProps> = ({
         <div className="fixed inset-0 z-50 flex justify-start animate-fade-in" dir="rtl">
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
+            className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
             onClick={onCloseNavDrawer}
           />
 
@@ -1207,7 +1207,7 @@ export const EditMode: React.FC<EditModeProps> = ({
                     value={sourceSearchQuery}
                     onChange={e => setSourceSearchQuery(e.target.value)}
                     placeholder="חיפוש בכל הפרויקט..."
-                    className="w-full pl-3 pr-4 py-2 text-sm bg-[var(--color-surface-container-low)] border border-[var(--color-outline)] rounded-xl text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] font-sans"
+                    className="w-full pl-3 pr-4 py-2 text-sm bg-[var(--color-surface-container-high)] border border-[var(--color-outline)] rounded-xl text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] font-sans"
                   />
                   <p className="text-xs text-[var(--color-on-surface-variant)]">
                     החיפוש מסנן את הרשימה הראשית לפי שורות פירוש או מקור.
@@ -1217,7 +1217,7 @@ export const EditMode: React.FC<EditModeProps> = ({
                 <div className="flex flex-col flex-1 min-h-0">
                   {/* Heading Search */}
                   {commentarySegments.length > 3 && (
-                    <div className="p-3 border-b border-[var(--color-outline)] bg-[var(--color-surface-container-low)] shrink-0">
+                    <div className="p-3 border-b border-[var(--color-outline)] bg-[var(--color-surface-container-high)] shrink-0">
                       <div className="relative">
                         <input
                           type="text"
@@ -1234,7 +1234,7 @@ export const EditMode: React.FC<EditModeProps> = ({
                   {/* List of extracted Headings */}
                   <div className="flex-1 overflow-y-auto p-3 space-y-2">
                     {filteredDrawerSegments.length === 0 ? (
-                      <div className="p-8 text-center text-xs text-[var(--color-on-surface-variant)] bg-[var(--color-surface-container-low)] rounded-xl border border-dashed border-[var(--color-outline)] font-medium">
+                      <div className="p-8 text-center text-xs text-[var(--color-on-surface-variant)] bg-[var(--color-surface-container-high)] rounded-xl border border-dashed border-[var(--color-outline)] font-medium">
                         לא נמצאו כותרות המתאימות לחיפוש
                       </div>
                     ) : (
@@ -1247,7 +1247,7 @@ export const EditMode: React.FC<EditModeProps> = ({
                           <button
                             key={`drawer-seg-${sIdx}`}
                             onClick={() => handleSelectHeading(seg)}
-                            className="w-full text-right p-3 rounded-xl border border-[var(--color-outline-variant)] bg-[var(--color-surface-container-low)] hover:bg-[var(--color-primary-subtle)] hover:border-[var(--color-primary)] transition-all group flex flex-col gap-1.5 cursor-pointer"
+                            className="w-full text-right p-3 rounded-xl border border-[var(--color-outline-variant)] bg-[var(--color-surface-container-high)] hover:bg-[var(--color-primary-subtle)] hover:border-[var(--color-primary)] transition-all group flex flex-col gap-1.5 cursor-pointer"
                           >
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2 min-w-0">
@@ -1311,7 +1311,7 @@ export const EditMode: React.FC<EditModeProps> = ({
               const isOver = dragOverSourceIdx === srcLine.index && dragOverSourceType === srcLine.targetType;
               const isCurrent = srcLine.isCurrent;
               
-              let cardBg = "bg-[var(--color-surface-container-low)] border-[var(--color-outline-variant)]";
+              let cardBg = "bg-[var(--color-surface-container-high)] border-[var(--color-outline-variant)]";
               if (isCurrent) {
                 cardBg = "bg-[var(--color-primary-subtle)] border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]";
               }
