@@ -619,7 +619,9 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
               </div>
             </div>
           </div>
-
+          <div className="shrink-0 mt-2 flex items-center justify-center py-4 text-sm font-semibold text-[var(--color-on-surface)]">
+            {selectedBookTitle ? `ספר נבחר: ${selectedBookTitle}` : 'בחר ספר פירוש מימין כדי להתחיל'}
+          </div>
         </div>
 
         {/* Left Pane: Algorithm Settings (4 Cols) */}
@@ -717,15 +719,12 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
             </div>
           </div>
           
-          <div className="shrink-0 mt-2 flex flex-col sm:flex-row items-center justify-between gap-3 py-2">
-            <span className="text-sm font-semibold text-[var(--color-on-surface)] text-right">
-              {selectedBookTitle ? `ספר נבחר: ${selectedBookTitle}` : 'בחר ספר פירוש מימין כדי להתחיל'}
-            </span>
+          <div className="shrink-0 mt-2">
             <button
               type="button"
               onClick={handleRun}
               disabled={!selectedBookTitle || isProcessing}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 text-sm font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:brightness-105 active:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-[var(--radius-md)] transition-all shadow-md shrink-0"
+              className="w-full inline-flex items-center justify-center gap-2 px-5 py-4 text-sm font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:brightness-105 active:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-[var(--radius-md)] transition-all shadow-md"
             >
               {isProcessing ? (
                 <span>מעבד מיפוי...</span>
