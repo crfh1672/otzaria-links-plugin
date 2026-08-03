@@ -108,11 +108,13 @@ export function areHeadersMatching(h1: string, h2: string): boolean {
 const RASHI_KEYWORDS = [
   // With ד"ה / בד"ה — longest first
   'פירש"י ד"ה', 'פירש"י בד"ה', 'פרש"י ד"ה', 'פרש"י בד"ה',
+  'בפירש"י ד"ה', 'בפירש"י בד"ה', 'בפרש"י ד"ה', 'בפרש"י בד"ה',
   'רש"י ד"ה', 'רש"י בד"ה', 'ברש"י ד"ה', 'ברש"י בד"ה',
   'רשי ד"ה', 'רשי בד"ה', 'ברשי ד"ה', 'ברשי בד"ה',
   'רשד"ה', 'ברשד"ה', 'רשדה', 'ברשדה',
   // Without ד"ה
   'פירש"י', 'פרש"י',
+  'בפירש"י', 'בפרש"י',
   'ברש"י', 'רש"י', 'ברשי', 'רשי'
 ];
 
@@ -133,6 +135,21 @@ const TOSAFOT_KEYWORDS = [
   'בתו\'',   'תו\'',
   'בתו',     'תו'
 ];
+
+function toPrefixAlternation(keywords: string[]): string {
+  return [...new Set(keywords)]
+    .sort((a, b) => b.length - a.length)
+    .map(kw => kw.replace(/\s+/g, '\\s+'))
+    .join('|');
+}
+
+const RASHI_PREFIX_ALTS = toPrefixAlternation(RASHI_KEYWORDS);
+const TOSAFOT_PREFIX_ALTS = toPrefixAlternation(TOSAFOT_KEYWORDS);
+
+const SECONDARY_PREFIX_STRIP_RE = new RegExp(
+  `^(?:${RASHI_PREFIX_ALTS}|${TOSAFOT_PREFIX_ALTS}|שם\\s+ד"ה|או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד|בד"ה|בדה)\\s*[:.\\-]?\\s*`,
+  'i'
+);
 
 /**
  * Keywords that indicate the commentary is citing the Gemara (primary Talmud source).
@@ -198,8 +215,9 @@ const getSecondaryBookLabel = (targetSecondary: 'rashi' | 'tosafot') =>
 export function normalizeHebrewQuotes(text: string): string {
   if (!text) return '';
   return text
-    .replace(/[׳’‘´]/g, "'") // Added '´' for broader single quote normalization
-    .replace(/[״“”]/g, '"');
+    .replace(/[׳'’‘´]{2}/g, '"') // Map consecutive single quotes to double quotes
+    .replace(/[׳'’‘´]/g, "'") // Normalize single quotes
+    .replace(/[״"“”″‟„]/g, '"'); // Normalize double quotes
 }
 
 export function stripSecondaryPrefix(line: string): string {
@@ -213,10 +231,8 @@ export function stripSecondaryPrefix(line: string): string {
   cleaned = cleaned.replace(/^(?:בגמרא|גמרא|גמ'|במשנה|משנה|מתניתין|מתניתן|מתני')\s*[:.\-]?\s*/i, '');
 
   // Step 2: strip the secondary-source prefix.
-  // Alternatives are ordered longest-first so that e.g. "תוס' ד"ה" is matched
-  // before the shorter "תוס'" — preventing partial matches that leave stray tokens.
-  // JavaScript does not support the /x (verbose) flag, so this is one long line.
-  cleaned = cleaned.replace(/^(?:ברש"י\s+בד"ה|ברש"י\s+ד"ה|רש"י\s+בד"ה|רש"י\s+ד"ה|ברשי\s+בד"ה|ברשי\s+ד"ה|רשי\s+בד"ה|רשי\s+ד"ה|רשי\s+דה|ברשי\s+דה|רשד"ה|רשדה|ברשד"ה|ברשדה|פירש"י|פרש"י|ברש"י|רש"י|ברשי|רשי|בתוספות\s+בד"ה|בתוספות\s+ד"ה|תוספות\s+בד"ה|תוספות\s+ד"ה|בתוסות\s+בד"ה|בתוסות\s+ד"ה|תוסות\s+בד"ה|תוסות\s+ד"ה|בתוס'\s+בד"ה|בתוס'\s+ד"ה|תוס'\s+בד"ה|תוס'\s+ד"ה|בתוס\s+בד"ה|בתוס\s+ד"ה|תוס\s+בד"ה|תוס\s+ד"ה|בתו'\s+בד"ה|בתו'\s+ד"ה|תו'\s+בד"ה|תו'\s+ד"ה|בתו\s+בד"ה|בתו\s+ד"ה|תו\s+בד"ה|תו\s+ד"ה|בתוד"ה|תוד"ה|בתוספות|תוספות|בתוסות|תוסות|בתוס'|תוס'|בתוס|תוס|בתו'|תו'|שם\s+ד"ה|או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד|בד"ה|בדה)\s*[:.\-]?\s*/i, '');
+  // Uses dynamically built regex from RASHI_KEYWORDS and TOSAFOT_KEYWORDS
+  cleaned = cleaned.replace(SECONDARY_PREFIX_STRIP_RE, '');
 
   // Step 3: strip a bare ד"ה / דה that may remain after removing only the source name
   // e.g. line was "תוס' ד"ה אמרי" — "תוס'" stripped, "ד"ה" still leads
@@ -297,7 +313,7 @@ export function extractDiburHamatchil(
     explicit = true;
   }
   // 2. Check for כו' / וכו' / וגו' / וגומר / וכולי
-  else if (/\b(?:ו?כו'|וגו'|וגומר|וכולי)\b/i.test(cleanLine)) {
+  else if (/(?:^|\s)(?:ו?כו'|וגו'|וגומר|וכולי)(?:\s|$|[.,:;])/i.test(cleanLine)) {
     dhPart = cleanLine;
     explicit = true;
   }
@@ -446,7 +462,7 @@ export function runLinkingParser(
         const validStart = Math.max(1, Math.min(start, docLines.length));
         const validEnd = Math.max(validStart, Math.min(end, docLines.length));
 
-        const segments = fullLineText.split(/\bו?כו'/i).map(s => s.trim()).filter(Boolean);
+        const segments = fullLineText.split(/(?:^|\s)ו?כו'(?:\s|$|[.,:;])/i).map(s => s.trim()).filter(Boolean);
         if (segments.length <= 1) {
           const cleanDh = normalizeText(fullLineText);
           return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum);
@@ -703,9 +719,13 @@ export function runLinkingParser(
                 currentWordCount = searchWords.length;
               } else {
                 // Word-by-word matching with fuzzy similarity score and word weighting
-                const res = calcContiguousScore(searchWords, docWords);
-                const expRes = calcContiguousScore(expSearchWords, expDocWords);
-                const winningRes = res.score >= expRes.score ? res : expRes;
+                const combos = [
+                  calcContiguousScore(searchWords, docWords),
+                  calcContiguousScore(expSearchWords, expDocWords),
+                  calcContiguousScore(searchWords, expDocWords),
+                  calcContiguousScore(expSearchWords, docWords),
+                ];
+                const winningRes = combos.reduce((best, c) => c.score > best.score ? c : best);
                 currentMatchCount = winningRes.score;
                 currentWordCount = winningRes.wordCount;
               }
@@ -714,9 +734,13 @@ export function runLinkingParser(
               // Constraint: the sequence must start within the first 3 words of the commentary
               // line to avoid false positives from incidental word matches deep in the line.
               // Also caps sourceWords to MAX_DH_WORDS (12) to bound the search space.
-              const origRes = calcContiguousScore(fullWords, docWords);
-              const expRes = calcContiguousScore(expFullWords, expDocWords);
-              const winningRes = origRes.score >= expRes.score ? origRes : expRes;
+              const combos = [
+                calcContiguousScore(fullWords, docWords),
+                calcContiguousScore(expFullWords, expDocWords),
+                calcContiguousScore(fullWords, expDocWords),
+                calcContiguousScore(expFullWords, docWords),
+              ];
+              const winningRes = combos.reduce((best, c) => c.score > best.score ? c : best);
               let rawMatchCount = winningRes.score;
               currentWordCount = winningRes.wordCount;
 
@@ -842,7 +866,7 @@ export function runLinkingParser(
       // Search in primary source segment unless the line explicitly targets a secondary source or is 'בא"ד' (which means inherit previous).
       if (!explicitSecondaryTarget && !shouldInheritLine) {
         console.log(`🔍 Searching PRIMARY source: lineForDhExtraction='${lineForDhExtraction}', cleanDh='${cleanDh}', isExplicit=${isExplicitDelimiter}`);
-        const hasKoo = /\bו?כו'/i.test(lineForDhExtraction) || /\bו?כו'/i.test(trimmedLine);
+        const hasKoo = /(?:^|\s)ו?כו'(?:\s|$|[.,:;])/i.test(lineForDhExtraction) || /(?:^|\s)ו?כו'(?:\s|$|[.,:;])/i.test(trimmedLine);
         if (hasKoo) {
           console.log(`  🎯 Applying First Anchor Priority for primary source with כו' / וכו'`);
           srcMatchRes = searchPrimaryWithFirstAnchor(

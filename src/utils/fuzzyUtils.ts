@@ -64,6 +64,26 @@ export function getNikudFingerprint(word: string): string {
 }
 
 /**
+ * Strips ktiv-malei vowel-letters (ו / י) to get the consonantal "skeleton"
+ * of a word, for bridging full (מלא) vs. deficient (חסר) spelling variants
+ * like מצווה/מצוה, כהן/כוהן, עניין/ענין.
+ */
+function ktivSkeleton(word: string): string {
+  return word.replace(/[וי]/g, '');
+}
+
+/**
+ * True if two words are plausibly the same word differing only by
+ * ktiv-malei / ktiv-chaser spelling (ו/י insertions).
+ */
+export function isKtivVariant(w1: string, w2: string): boolean {
+  if (w1 === w2) return false;
+  const skel1 = ktivSkeleton(w1);
+  const skel2 = ktivSkeleton(w2);
+  return skel1.length >= 2 && skel1 === skel2 && Math.abs(w1.length - w2.length) <= 2;
+}
+
+/**
  * Computes Levenshtein edit distance between two strings
  */
 export function levenshteinDistance(a: string, b: string): number {
@@ -122,6 +142,11 @@ export function getWordSimilarity(w1: string, w2: string, enableFuzzy: boolean =
   if (stem1 === stem2 && stem1 !== w1 || stem1 === stem2 && stem2 !== w2) {
     // At least one side had a prefix stripped → root match
     return 0.92;
+  }
+
+  // ── Layer 1.5: Ktiv Malei / Chaser match ─────────────────────────────────────
+  if (isKtivVariant(stem1, stem2)) {
+    return 0.9;
   }
 
   // ── Layer 2: fuzzy match (Levenshtein) ───────────────────────────────────────

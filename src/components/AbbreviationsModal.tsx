@@ -38,7 +38,7 @@ export const AbbreviationsModal: React.FC<AbbreviationsModalProps> = ({
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const text = event.target?.result as string;
         const parsed = JSON.parse(text);
@@ -54,12 +54,15 @@ export const AbbreviationsModal: React.FC<AbbreviationsModalProps> = ({
           });
 
           setDict(validDict);
-          alert(`נטען מילון ראשי תיבות בהצלחה! נטענו ${Object.keys(validDict).length} ערכים.`);
+          // @ts-ignore
+          await window.Otzaria.call('ui.showMessage', { message: `נטען מילון ראשי תיבות בהצלחה! נטענו ${Object.keys(validDict).length} ערכים.` });
         } else {
-          alert('קובץ ה-JSON חייב להכיל אובייקט של ראשי תיבות ומערך אפשרויות.');
+          // @ts-ignore
+          await window.Otzaria.call('ui.showError', { message: 'קובץ ה-JSON חייב להכיל אובייקט של ראשי תיבות ומערך אפשרויות.' });
         }
       } catch (err) {
-        alert('שגיאה בפענוח קובץ ה-JSON: ' + String(err));
+        // @ts-ignore
+        await window.Otzaria.call('ui.showError', { message: 'שגיאה בפענוח קובץ ה-JSON: ' + String(err) });
       }
     };
     reader.readAsText(file, 'utf-8');
@@ -75,8 +78,13 @@ export const AbbreviationsModal: React.FC<AbbreviationsModalProps> = ({
     downloadAnchor.remove();
   };
 
-  const handleResetToDefault = () => {
-    if (confirm('האם לחזור למילון ראשי התיבות המהוודר כברירת מחדל?')) {
+  const handleResetToDefault = async () => {
+    // @ts-ignore
+    const res = await window.Otzaria.call('ui.showConfirm', {
+      title: 'איפוס מילון',
+      content: 'האם לחזור למילון ראשי התיבות המהוודר כברירת מחדל?'
+    });
+    if (res.success && res.data.confirmed) {
       setDict(DEFAULT_ABBREVIATIONS);
     }
   };

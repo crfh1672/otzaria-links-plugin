@@ -38,7 +38,13 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({ onLoadSession, onC
   }, []);
 
   const handleDelete = async (id: string, title: string) => {
-    if (!window.confirm(`האם למחוק את הפרויקט "${title}"?`)) return;
+    // @ts-ignore
+    const res = await window.Otzaria.call('ui.showConfirm', {
+      title: 'אישור מחיקה',
+      content: `האם למחוק את הפרויקט "${title}"?`
+    });
+    if (!res.success || !res.data.confirmed) return;
+    
     try {
       await removeFromCache(id);
       notifySuccess('הפרויקט שנבחר נמחק בהצלחה');

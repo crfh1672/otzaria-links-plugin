@@ -1,5 +1,5 @@
-import React from 'react';
-import { Save, FolderOpen, Download, ArrowLeftRight, Code, RotateCcw, ListTree } from 'lucide-react';
+import React, { useState } from 'react';
+import { Save, FolderOpen, Download, ArrowLeftRight, RotateCcw, ListTree, Filter } from 'lucide-react';
 import JSZip from 'jszip';
 import { SessionState } from '../types';
 import { formatLineWithDH, parseDocumentSegments, normalizeText } from '../utils/parserAlgorithm';
@@ -33,6 +33,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 }) => {
   const commentaryName = session?.commentaryTitle || 'ספר פירוש';
   const sourceName = session?.config?.targetBookName || 'ספר מקור';
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const handleExportZip = async () => {
     if (!session) {
@@ -189,108 +190,125 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-[var(--color-surface-container-high)] text-[var(--color-on-surface)] shadow-xs border-b border-[var(--color-outline)]">
-      <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
-        {/* Right side: Commentary and Source Active Book Titles */}
-        
-      <div className="flex items-center gap-2">
-        {mode === 'edit' && onToggleNavDrawer && (
-            <button
-              onClick={onToggleNavDrawer}
-              className={`inline-flex items-center justify-center p-2 rounded-lg transition-all shadow-xs border ${
-                isNavDrawerOpen
-                  ? 'bg-[var(--color-primary)] text-[var(--color-on-primary)] border-[var(--color-primary)]'
-                  : 'bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] border-[var(--color-outline)]'
-              }`}
-              title="סרגל ניווט וחיפוש"
-            >
-              <ListTree className="w-3.5 h-3.5" />
-              
-              {session && (
-                <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-100 font-mono mr-0.5">
-                  {parseDocumentSegments(session.commentaryLines.join('\n')).segments.length}
-                </span>
-              )}
-            </button>
-          )}
-        <div className="flex items-center gap-2 bg-[var(--color-surface)] px-3 py-1.5 rounded-xl border border-[var(--color-outline)] shadow-2xs">
+    <header className="sticky top-0 z-40 w-full bg-[var(--color-surface-container-high)] text-[var(--color-on-surface)] shadow-xs border-b border-[var(--color-outline)]" dir="rtl">
+      <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+        {/* Rightmost: Books Tag */}
+        <div className="flex items-center gap-2 bg-[var(--color-surface)] px-3 py-1.5 rounded-xl border border-[var(--color-outline)] shadow-2xs shrink-0">
           <span className="text-xs font-bold text-[var(--color-primary)] max-w-[180px] truncate" title={commentaryName}>
             {commentaryName}
           </span>
-          <ArrowLeftRight className="w-3.5 h-3.5 text-current shrink-0 mx-1" />
+          <ArrowLeftRight className="w-3.5 h-3.5 text-[var(--color-on-surface-variant)] shrink-0 mx-1" />
           <span className="text-xs font-bold text-[var(--color-on-surface)] max-w-[180px] truncate" title={sourceName}>
             {sourceName}
           </span>
           {session && (
-            <span className="text-[11px] bg-[var(--color-primary-subtle)] text-[var(--color-primary)] font-bold px-2 py-0.5 rounded-full border border-[var(--color-outline-variant)] mr-1">
+            <span className="text-[11px] bg-[var(--color-primary-subtle)] text-[var(--color-primary)] font-bold px-2 py-0.5 rounded-[var(--radius-pill)] border border-[var(--color-outline-variant)] mr-2">
               {session.links.length} קישורים
             </span>
           )}
         </div>
-      </div>
-    
-
-        {/* Left side: Action Buttons */}
-        <div className="flex items-center gap-2 flex-wrap">
+        
+        {/* Actions Group (Right-Center) */}
+        <div className="flex items-center justify-end flex-1 mr-4 gap-1">
+          <button
+            onClick={handleExportZip}
+            disabled={!session}
+            className="inline-flex items-center justify-center p-2 rounded-[var(--radius-sm)] text-[var(--color-on-surface)] hover:bg-[var(--color-secondary-subtle)] disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+            title="ייצא קובץ ZIP"
+            aria-label="הורדה"
+          >
+            <Download className="w-5 h-5" />
+          </button>
           
-
-          {mode === 'edit' && (
-            <button
-              onClick={onReturnToSetup}
-              className="inline-flex items-center justify-center p-2 font-semibold bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] rounded-lg transition-colors border border-[var(--color-outline)]"
-              title="חזור למסך בחירת ספרים"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              
-            </button>
-          )}
+          <button
+            onClick={onOpenProjects}
+            className="inline-flex items-center justify-center p-2 rounded-[var(--radius-sm)] text-[var(--color-on-surface)] hover:bg-[var(--color-secondary-subtle)] transition-colors"
+            title="פתח פרויקט שמור מהמטמון"
+            aria-label="פתיחת פרויקטים"
+          >
+            <FolderOpen className="w-5 h-5" />
+          </button>
 
           <button
             onClick={onSaveSession}
             disabled={!session}
-            className="inline-flex items-center justify-center p-2 bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all shadow-xs"
-            title="שמור מצב נוכחי למטמון המקומי"
+            className="inline-flex items-center justify-center p-2 rounded-[var(--radius-sm)] text-[var(--color-on-surface)] hover:bg-[var(--color-secondary-subtle)] disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+            title="שמור מצב נוכחי"
+            aria-label="שמירה"
           >
-            <Save className="w-3.5 h-3.5" />
-            
+            <Save className="w-5 h-5" />
           </button>
 
-          <button
-            onClick={onOpenProjects}
-            className="inline-flex items-center justify-center p-2 font-semibold bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] rounded-lg transition-colors border border-[var(--color-outline)]"
-            title="פתח פרויקט שמור מהמטמון"
-          >
-            <FolderOpen className="w-3.5 h-3.5 text-current" />
-            
-          </button>
+          <div className="w-px h-5 bg-[var(--color-outline)] mx-1" />
 
-          
           {mode === 'edit' && onSortModeChange && (
-            <select
-              value={sortMode}
-              onChange={(e) => onSortModeChange(e.target.value as any)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] rounded-lg transition-colors border border-[var(--color-outline)] cursor-pointer outline-none"
-              title="מיון תוצאות"
-            >
-              <option value="book_order">מיון לפי סדר הספר</option>
-              <option value="score_asc">מיון לפי ניקוד (סדר עולה)</option>
-              <option value="score_desc">מיון לפי ניקוד (סדר יורד)</option>
-            </select>
+            <div className="relative inline-block">
+              <button
+                onClick={() => setIsFilterOpen(!isFilterOpen)}
+                className="inline-flex items-center justify-center p-2 rounded-[var(--radius-sm)] text-[var(--color-on-surface)] hover:bg-[var(--color-secondary-subtle)] transition-colors"
+                title="מיון תוצאות"
+                aria-label="סינון ומיון"
+              >
+                <Filter className="w-5 h-5" />
+              </button>
+              {isFilterOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsFilterOpen(false)} />
+                  <div className="absolute top-[calc(100%+6px)] right-0 w-48 bg-[var(--color-surface-container-highest)] rounded-[var(--radius-md)] shadow-lg border border-[var(--color-outline)] p-2 z-50 flex flex-col gap-1">
+                    <button
+                      className={`text-right px-3 py-2 text-xs font-semibold rounded-[var(--radius-sm)] ${sortMode === 'book_order' ? 'bg-[var(--color-primary-subtle)] text-[var(--color-primary)]' : 'text-[var(--color-on-surface)] hover:bg-[var(--color-secondary-subtle)]'}`}
+                      onClick={() => { onSortModeChange('book_order'); setIsFilterOpen(false); }}
+                    >
+                      מיון לפי סדר הספר
+                    </button>
+                    <button
+                      className={`text-right px-3 py-2 text-xs font-semibold rounded-[var(--radius-sm)] ${sortMode === 'score_asc' ? 'bg-[var(--color-primary-subtle)] text-[var(--color-primary)]' : 'text-[var(--color-on-surface)] hover:bg-[var(--color-secondary-subtle)]'}`}
+                      onClick={() => { onSortModeChange('score_asc'); setIsFilterOpen(false); }}
+                    >
+                      מיון לפי ניקוד (סדר עולה)
+                    </button>
+                    <button
+                      className={`text-right px-3 py-2 text-xs font-semibold rounded-[var(--radius-sm)] ${sortMode === 'score_desc' ? 'bg-[var(--color-primary-subtle)] text-[var(--color-primary)]' : 'text-[var(--color-on-surface)] hover:bg-[var(--color-secondary-subtle)]'}`}
+                      onClick={() => { onSortModeChange('score_desc'); setIsFilterOpen(false); }}
+                    >
+                      מיון לפי ניקוד (סדר יורד)
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
-  
-<button
-            onClick={handleExportZip}
-            disabled={!session}
-            className="inline-flex items-center justify-center p-2 bg-emerald-700 dark:bg-emerald-600 text-white hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all shadow-xs"
-            title="ייצא קובץ ZIP עם _links.json וקובץ TXT מעודכן"
-          >
-            <Download className="w-3.5 h-3.5" />
-            
-          </button>
 
-          
+          {mode === 'edit' && (
+            <button
+              onClick={onReturnToSetup}
+              className="inline-flex items-center justify-center p-2 rounded-[var(--radius-sm)] text-[var(--color-on-surface)] hover:bg-[var(--color-secondary-subtle)] transition-colors"
+              title="חזור למסך בחירת ספרים"
+              aria-label="רענון"
+            >
+              <RotateCcw className="w-5 h-5" />
+            </button>
+          )}
         </div>
+
+        {/* Leftmost: Hamburger menu */}
+        <button
+          onClick={onToggleNavDrawer}
+          className={`inline-flex items-center justify-center p-2 rounded-[var(--radius-sm)] transition-colors shrink-0 ${
+            mode === 'setup'
+              ? 'opacity-40 pointer-events-none bg-[var(--color-surface-container-low)] text-[var(--color-on-surface-variant)]'
+              : isNavDrawerOpen
+                ? 'bg-[var(--color-primary)] text-[var(--color-on-primary)] border border-[var(--color-primary)]'
+                : 'bg-[var(--color-surface)] text-[var(--color-on-surface)] border border-[var(--color-outline)] hover:bg-[var(--color-outline-variant)]'
+          }`}
+          title="תפריט ניווט"
+          aria-label="תפריט המבורגר"
+        >
+          <ListTree className="w-5 h-5" />
+        </button>
+
       </div>
     </header>
   );
 };
+

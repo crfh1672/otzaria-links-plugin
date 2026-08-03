@@ -1,3 +1,5 @@
+import { DEFAULT_REPLACEMENTS } from './replacements';
+
 /**
  * Default dictionary of Hebrew/Rabbinic Rashei Teivot (abbreviations) and their possible expansions.
  */
@@ -380,8 +382,25 @@ export function cleanAbbrKey(key: string): string {
  */
 export const NORMALIZED_ABBREVIATIONS_MAP: Record<string, string[]> = {};
 
-// Populate map
+// Populate map with abbreviations
 Object.entries(DEFAULT_ABBREVIATIONS).forEach(([rawKey, options]) => {
+  const cleanedKey = cleanAbbrKey(rawKey);
+  if (!NORMALIZED_ABBREVIATIONS_MAP[cleanedKey]) {
+    NORMALIZED_ABBREVIATIONS_MAP[cleanedKey] = options;
+  } else {
+    // Merge options without duplicates
+    const combined = new Set([...NORMALIZED_ABBREVIATIONS_MAP[cleanedKey], ...options]);
+    NORMALIZED_ABBREVIATIONS_MAP[cleanedKey] = Array.from(combined);
+  }
+
+  // Also store exact raw key if different
+  if (rawKey !== cleanedKey) {
+    NORMALIZED_ABBREVIATIONS_MAP[rawKey] = options;
+  }
+});
+
+// Populate map with replacements
+Object.entries(DEFAULT_REPLACEMENTS).forEach(([rawKey, options]) => {
   const cleanedKey = cleanAbbrKey(rawKey);
   if (!NORMALIZED_ABBREVIATIONS_MAP[cleanedKey]) {
     NORMALIZED_ABBREVIATIONS_MAP[cleanedKey] = options;
