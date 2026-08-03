@@ -73,30 +73,67 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
     }
   }, [category]);
 
+  const findBookInTreeRecursive = (node: BookNode, targetName: string, keyword: string): string | null => {
+    if (node.books) {
+      for (const b of node.books) {
+        const t = (b.title || b.bookId || '').toLowerCase();
+        if (t.includes(targetName.toLowerCase()) && (t.includes(keyword) || t.includes(keyword.replace(/"/g, '')))) {
+          return b.bookId;
+        }
+      }
+    }
+    if (node.categories) {
+      for (const cat of node.categories) {
+        const found = findBookInTreeRecursive(cat, targetName, keyword);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
   const getSecondaryBookVariants = (targetBook: string, source: 'rashi' | 'tosafot') => {
-    const base = targetBook.replace(/^מסכת\s+/i, '').trim();
+    const variants: string[] = [];
+    const base = targetBook.replace(/^מסכת\s+/i, '').replace(/^ספר\s+/i, '').trim();
+
+    if (tree) {
+      const foundId = findBookInTreeRecursive(tree, base, source === 'rashi' ? 'רש' : 'תוס');
+      if (foundId && !variants.includes(foundId)) {
+        variants.push(foundId);
+      }
+    }
+
     if (source === 'rashi') {
-      return [
+      variants.push(
         `רש"י על ${targetBook}`,
         `רש"י על ${base}`,
         `רש"י ${targetBook}`,
         `רש"י ${base}`,
+        `רשי על ${targetBook}`,
+        `רשי על ${base}`,
+        `רשי ${targetBook}`,
+        `רשי ${base}`,
         `רש"י על מסכת ${base}`,
-        `רש"י על ספר ${base}`
-      ];
+        `רש"י על ספר ${base}`,
+        `רש"י על מסכת ${targetBook}`,
+        `רש"י`
+      );
+    } else {
+      variants.push(
+        `תוספות על ${targetBook}`,
+        `תוספות על ${base}`,
+        `תוס' על ${targetBook}`,
+        `תוס' על ${base}`,
+        `תוס על ${targetBook}`,
+        `תוס על ${base}`,
+        `תוסות על ${targetBook}`,
+        `תוסות על ${base}`,
+        `תוספות על מסכת ${base}`,
+        `תוס' על מסכת ${base}`,
+        `תוספות`,
+        `תוס'`
+      );
     }
-    return [
-      `תוספות על ${targetBook}`,
-      `תוספות על ${base}`,
-      `תוס' על ${targetBook}`,
-      `תוס' על ${base}`,
-      `תוס על ${targetBook}`,
-      `תוס על ${base}`,
-      `תוסות על ${targetBook}`,
-      `תוסות על ${base}`,
-      `תוספות על מסכת ${base}`,
-      `תוס' על מסכת ${base}`
-    ];
+    return Array.from(new Set(variants));
   };
 
   const tryFetchSecondarySource = async (

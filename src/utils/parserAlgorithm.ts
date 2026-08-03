@@ -208,6 +208,10 @@ export function stripSecondaryPrefix(line: string): string {
   let cleaned = normalizeHebrewQuotes(stripHtmlTags(line.trim()));
   cleaned = cleaned.replace(/[\u0591-\u05C7]/g, '');
 
+  // Step 1.5: strip leading numbers/bullets/brackets and source context prefixes
+  cleaned = cleaned.replace(/^(?:\d+[\.\)]|[ א-ת][\.\)]|\([^)]+\)|\[[^\]]+\]|[•\-\*])\s*/, '');
+  cleaned = cleaned.replace(/^(?:בגמרא|גמרא|גמ'|במשנה|משנה|מתניתין|מתניתן|מתני')\s*[:.\-]?\s*/i, '');
+
   // Step 2: strip the secondary-source prefix.
   // Alternatives are ordered longest-first so that e.g. "תוס' ד"ה" is matched
   // before the shorter "תוס'" — preventing partial matches that leave stray tokens.
@@ -350,9 +354,10 @@ export function runLinkingParser(
   const dhHighlights: Record<number, DHHighlight> = {};
 
   // Map source header segments to commentary header segments
+  let previousSecondaryType: 'rashi' | 'tosafot' | null = null;
+
   commDoc.segments.forEach(commSeg => {
     let previousLink: OtzariaLink | null = null;
-    let previousSecondaryType: 'rashi' | 'tosafot' | null = null;
 
     // Find matching source segment
     const srcSeg = srcDoc.segments.find(s => areHeadersMatching(commSeg.headerTitle, s.headerTitle));
@@ -374,12 +379,12 @@ export function runLinkingParser(
       console.log(`\n📝 Line ${cLineIdx}: '${trimmedLine.substring(0, 50)}...' → normalizedPrefixLine='${normalizedPrefixLine.substring(0, 50)}...'`);
 
       // Check routing to secondary sources (Step 4).
-      // First, strip any leading source-context prefix (גמרא / גמ' / משנה / מתני' etc.)
-      // so that "בגמרא תוספות ד"ה" correctly routes to Tosafot, not the primary source.
-      const strippedContextLine = normalizedPrefixLine.replace(SOURCE_CONTEXT_STRIP_RE, '').trim();
+      // First, strip leading numbers/bullets/brackets and source-context prefixes (גמרא / גמ' / משנה / מתני' etc.)
+      let cleanedPrefix = normalizedPrefixLine.replace(/^(?:\d+[\.\)]|[ א-ת][\.\)]|\([^)]+\)|\[[^\]]+\]|[•\-\*])\s*/, '').trim();
+      const strippedContextLine = cleanedPrefix.replace(SOURCE_CONTEXT_STRIP_RE, '').trim();
       // Use the stripped version for keyword detection; fall back to full line if stripping
       // left the line empty (meaning the whole line was just "גמ'" with no secondary keyword).
-      const lineForKeywordCheck = strippedContextLine || normalizedPrefixLine;
+      const lineForKeywordCheck = strippedContextLine || cleanedPrefix || normalizedPrefixLine;
 
       let targetSecondary: 'rashi' | 'tosafot' | null = null;
       let explicitSecondaryTarget = false;
@@ -576,7 +581,8 @@ export function runLinkingParser(
         fullLineText: string,
         isExplicit: boolean,
         idfMap?: Record<string, number>,
-        prevLineNum?: number | null
+        prevLineNum?: number | null,
+        requireStartAtFirstWord: boolean = false
       ): { lineNum: number | null; matchedCount: number; matchedWordCount: number; expectedWeight: number; topK: {lineNum: number; score: number}[] } => {
         if (!docLines || docLines.length === 0) {
           console.log(`    ⚠️ searchLineInDoc: docLines is empty!`);
@@ -596,7 +602,7 @@ export function runLinkingParser(
           0
         );
 
-        console.log(`    📊 searchLineInDoc: validStart=${validStart}, validEnd=${validEnd}, prevLineNum=${prevLineNum ?? 'none'}, searchWords=[${searchWords.join(',')}], fullWords=[${fullWords.join(',')}], isExplicit=${isExplicit}, expectedWeight=${expectedWeight.toFixed(2)}`);
+        console.log(`    📊 searchLineInDoc: validStart=${validStart}, validEnd=${validEnd}, prevLineNum=${prevLineNum ?? 'none'}, searchWords=[${searchWords.join(',')}], fullWords=[${fullWords.join(',')}], isExplicit=${isExplicit}, expectedWeight=${expectedWeight.toFixed(2)}, requireStartAtFirstWord=${requireStartAtFirstWord}`);
 
         const searchRanges = [
           { s: validStart, e: validEnd }
@@ -651,108 +657,85 @@ export function runLinkingParser(
             let currentMatchCount = 0;
             let currentWordCount = 0;
 
+            const calcContiguousScore = (sourceWords: string[], targetWords: string[]): { score: number; wordCount: number } => {
+              // Only consider starting positions within the first 3 words of the commentary line
+              const maxStartIdx = Math.min(3, sourceWords.length);
+              // Cap source to 12 words maximum
+              const MAX_DH_WORDS = 12;
+              const cappedSource = sourceWords.slice(0, MAX_DH_WORDS);
+              let maxSeqScore = 0;
+              let bestWordCount = 0;
+              for (let startWIdx = 0; startWIdx < maxStartIdx; startWIdx++) {
+                const maxDocWIdx = requireStartAtFirstWord ? 1 : targetWords.length;
+                for (let docWIdx = 0; docWIdx < maxDocWIdx; docWIdx++) {
+                  let k = 0;
+                  let seqScore = 0;
+                  while (
+                    startWIdx + k < cappedSource.length &&
+                    docWIdx + k < targetWords.length
+                  ) {
+                    const w1 = cappedSource[startWIdx + k];
+                    const w2 = targetWords[docWIdx + k];
+                    const sim = getWordSimilarity(w1, w2, enableFuzzy);
+                    if (sim <= 0) break;
+                    const wWeight = getCombinedWordWeight(w1, enableWordWeighting, idfMap);
+                    seqScore += sim * wWeight;
+                    k++;
+                  }
+                  if (seqScore > maxSeqScore) {
+                    maxSeqScore = seqScore;
+                    bestWordCount = k;
+                  }
+                }
+              }
+              return { score: maxSeqScore, wordCount: bestWordCount };
+            };
+
             if (isExplicit) {
               // Explicit delimiter / כו': search for searchPhrase or expSearchPhrase in docLineNorm / expDocLineNorm
-              if (docLineNorm.includes(searchPhrase) || expDocLineNorm.includes(expSearchPhrase)) {
+              const matchAtStart = requireStartAtFirstWord
+                ? (docLineNorm.indexOf(searchPhrase) === 0 || expDocLineNorm.indexOf(expSearchPhrase) === 0)
+                : (docLineNorm.includes(searchPhrase) || expDocLineNorm.includes(expSearchPhrase));
+
+              if (matchAtStart) {
                 // Perfect exact substring match gets maximum bonus based on expectedWeight
                 currentMatchCount = expectedWeight + 10;
                 currentWordCount = searchWords.length;
               } else {
                 // Word-by-word matching with fuzzy similarity score and word weighting
-                let matchedOrig = 0;
-                let countOrig = 0;
-                searchWords.forEach(sw => {
-                  let maxSim = 0;
-                  docWords.forEach(dw => {
-                    const sim = getWordSimilarity(sw, dw, enableFuzzy);
-                    if (sim > maxSim) maxSim = sim;
-                  });
-                  const wWeight = getCombinedWordWeight(sw, enableWordWeighting, idfMap);
-                  matchedOrig += maxSim * wWeight;
-                  if (maxSim > 0.5) countOrig++;
-                });
-
-                let matchedExp = 0;
-                let countExp = 0;
-                expSearchWords.forEach(sw => {
-                  let maxSim = 0;
-                  expDocWords.forEach(dw => {
-                    const sim = getWordSimilarity(sw, dw, enableFuzzy);
-                    if (sim > maxSim) maxSim = sim;
-                  });
-                  const wWeight = getCombinedWordWeight(sw, enableWordWeighting, idfMap);
-                  matchedExp += maxSim * wWeight;
-                  if (maxSim > 0.5) countExp++;
-                });
-
-                if (matchedOrig >= matchedExp) {
-                  currentMatchCount = matchedOrig;
-                  currentWordCount = Math.max(1, countOrig);
-                } else {
-                  currentMatchCount = matchedExp;
-                  currentWordCount = Math.max(1, countExp);
-                }
+                const res = calcContiguousScore(searchWords, docWords);
+                const expRes = calcContiguousScore(expSearchWords, expDocWords);
+                const winningRes = res.score >= expRes.score ? res : expRes;
+                currentMatchCount = winningRes.score;
+                currentWordCount = winningRes.wordCount;
               }
             } else {
               // No explicit delimiter: find longest contiguous sequence of matching words.
               // Constraint: the sequence must start within the first 3 words of the commentary
               // line to avoid false positives from incidental word matches deep in the line.
               // Also caps sourceWords to MAX_DH_WORDS (12) to bound the search space.
-              const MAX_DH_WORDS = 12;
-              const calcContiguousScore = (sourceWords: string[], targetWords: string[]): { score: number; wordCount: number } => {
-                // Only consider starting positions within the first 3 words of the commentary line
-                const maxStartIdx = Math.min(3, sourceWords.length);
-                // Cap source to 12 words maximum
-                const cappedSource = sourceWords.slice(0, MAX_DH_WORDS);
-                let maxSeqScore = 0;
-                let bestWordCount = 0;
-                for (let startWIdx = 0; startWIdx < maxStartIdx; startWIdx++) {
-                  for (let docWIdx = 0; docWIdx < targetWords.length; docWIdx++) {
-                    let k = 0;
-                    let seqScore = 0;
-                    while (
-                      startWIdx + k < cappedSource.length &&
-                      docWIdx + k < targetWords.length
-                    ) {
-                      const w1 = cappedSource[startWIdx + k];
-                      const w2 = targetWords[docWIdx + k];
-                      const sim = getWordSimilarity(w1, w2, enableFuzzy);
-                      if (sim <= 0) break;
-                      const wWeight = getCombinedWordWeight(w1, enableWordWeighting, idfMap);
-                      seqScore += sim * wWeight;
-                      k++;
-                    }
-                    if (seqScore > maxSeqScore) {
-                      maxSeqScore = seqScore;
-                      bestWordCount = k;
-                    }
-                  }
+              const origRes = calcContiguousScore(fullWords, docWords);
+              const expRes = calcContiguousScore(expFullWords, expDocWords);
+              const winningRes = origRes.score >= expRes.score ? origRes : expRes;
+              let rawMatchCount = winningRes.score;
+              currentWordCount = winningRes.wordCount;
+
+              // Apply Sequential Monotonicity Penalty if prevLineNum is available
+              // Note: Very subtle bias (max 5% - 7%) so that out-of-order commentaries are not penalized
+              let distPenalty = 1.0;
+              if (prevLineNum !== null && prevLineNum !== undefined && prevLineNum > 0) {
+                const diff = lNum - prevLineNum;
+                if (diff < 0) {
+                  // Gentle micro-preference for current/subsequent lines over backward jumps (max 7% drop)
+                  distPenalty = Math.max(0.93, 1.0 - Math.abs(diff) * 0.005);
+                } else if (diff > 5) {
+                  // Gentle micro-preference for closer lines over far forward jumps (max 5% drop)
+                  distPenalty = Math.max(0.95, 1.0 - (diff - 5) * 0.002);
                 }
-                return { score: maxSeqScore, wordCount: bestWordCount };
-              };
-
-            const origRes = calcContiguousScore(fullWords, docWords);
-            const expRes = calcContiguousScore(expFullWords, expDocWords);
-            const winningRes = origRes.score >= expRes.score ? origRes : expRes;
-            let rawMatchCount = winningRes.score;
-            currentWordCount = winningRes.wordCount;
-
-            // Apply Sequential Monotonicity Penalty if prevLineNum is available
-            // Note: Very subtle bias (max 5% - 7%) so that out-of-order commentaries are not penalized
-            let distPenalty = 1.0;
-            if (prevLineNum !== null && prevLineNum !== undefined && prevLineNum > 0) {
-              const diff = lNum - prevLineNum;
-              if (diff < 0) {
-                // Gentle micro-preference for current/subsequent lines over backward jumps (max 7% drop)
-                distPenalty = Math.max(0.93, 1.0 - Math.abs(diff) * 0.005);
-              } else if (diff > 5) {
-                // Gentle micro-preference for closer lines over far forward jumps (max 5% drop)
-                distPenalty = Math.max(0.95, 1.0 - (diff - 5) * 0.002);
               }
-            }
 
-            currentMatchCount = rawMatchCount * distPenalty;
-          }
+              currentMatchCount = rawMatchCount * distPenalty;
+            }
 
           const minThreshold = isExplicit 
             ? Math.min(1.5, Math.max(0.7, expectedWeight * 0.65))
@@ -834,7 +817,8 @@ export function runLinkingParser(
           lineForDhExtraction,
           isExplicitDelimiter,
           rashiIdfMap,
-          previousLink ? previousLink.line_index_2 : null
+          previousLink ? previousLink.line_index_2 : null,
+          true
         );
         console.log(`  → Rashi search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
         matchedSecondaryLineNum = secMatchRes.lineNum;
@@ -848,7 +832,8 @@ export function runLinkingParser(
           lineForDhExtraction,
           isExplicitDelimiter,
           tosafotIdfMap,
-          previousLink ? previousLink.line_index_2 : null
+          previousLink ? previousLink.line_index_2 : null,
+          true
         );
         console.log(`  → Tosafot search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
         matchedSecondaryLineNum = secMatchRes.lineNum;
@@ -877,7 +862,8 @@ export function runLinkingParser(
             lineForDhExtraction,
             isExplicitDelimiter,
             srcIdfMap,
-            lastMatchedSrcLineIndex || (previousLink ? previousLink.line_index_2 : null)
+            lastMatchedSrcLineIndex || (previousLink ? previousLink.line_index_2 : null),
+            false
           );
         }
         console.log(`  → PRIMARY source result: lineNum=${srcMatchRes.lineNum}, matchedCount=${srcMatchRes.matchedCount}`);

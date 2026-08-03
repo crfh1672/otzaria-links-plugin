@@ -1036,8 +1036,8 @@ export const EditMode: React.FC<EditModeProps> = ({
                       <CollapsibleText
                         text={firstLinkObj.secondaryTarget
                           ? (firstLinkObj.secondaryTarget === 'rashi'
-                              ? (rashiLines && rashiLines[firstLinkObj.secondary_line_index! - 1] || '')
-                              : (tosafotLines && tosafotLines[firstLinkObj.secondary_line_index! - 1] || ''))
+                              ? ((rashiLines && rashiLines[firstLinkObj.secondary_line_index! - 1]) || `[שורה ${firstLinkObj.secondary_line_index} ברש"י]`)
+                              : ((tosafotLines && tosafotLines[firstLinkObj.secondary_line_index! - 1]) || `[שורה ${firstLinkObj.secondary_line_index} בתוספות]`))
                           : (sourceLines && sourceLines[firstLinkObj.line_index_2 - 1] || '')}
                         isPrimary={!firstLinkObj.secondaryTarget}
                         links={group.links}
