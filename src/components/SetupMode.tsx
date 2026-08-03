@@ -619,6 +619,7 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
               </div>
             </div>
           </div>
+
         </div>
 
         {/* Left Pane: Algorithm Settings (4 Cols) */}
@@ -715,42 +716,41 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
               </div>
             </div>
           </div>
-        </div>
-      </div>
+          
+          <div className="shrink-0 mt-2 flex flex-col sm:flex-row items-center justify-between gap-3 py-2">
+            <span className="text-sm font-semibold text-[var(--color-on-surface)] text-right">
+              {selectedBookTitle ? `ספר נבחר: ${selectedBookTitle}` : 'בחר ספר פירוש מימין כדי להתחיל'}
+            </span>
+            <button
+              type="button"
+              onClick={handleRun}
+              disabled={!selectedBookTitle || isProcessing}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 text-sm font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:brightness-105 active:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-[var(--radius-md)] transition-all shadow-md shrink-0"
+            >
+              {isProcessing ? (
+                <span>מעבד מיפוי...</span>
+              ) : (
+                <>
+                  <Play className="w-5 h-5 text-[var(--color-on-primary)] fill-current" />
+                  <span>הפעל אלגוריתם מיפוי</span>
+                </>
+              )}
+            </button>
+          </div>
 
-      </div>
-
-      {/* Bottom Bar: Status / Instruction and Run Button in One Row */}
-      <div className="shrink-0 mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-[var(--color-surface-container-high)] border border-[var(--color-outline-variant)] rounded-[var(--radius-md)] px-5 py-4 shadow-sm">
-        <div className="text-sm font-semibold text-[var(--color-on-surface)]">
-          {selectedBookTitle ? `ספר נבחר: ${selectedBookTitle}` : 'בחר ספר פירוש מימין כדי להתחיל'}
         </div>
-        <button
-          type="button"
-          onClick={handleRun}
-          disabled={!selectedBookTitle || isProcessing}
-          className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:brightness-105 active:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-[var(--radius-md)] transition-all shadow-md shrink-0"
-        >
-          {isProcessing ? (
-            <span>מעבד מיפוי...</span>
-          ) : (
-            <>
-              <Play className="w-5 h-5 text-[var(--color-on-primary)] fill-current" />
-              <span>הפעל אלגוריתם מיפוי</span>
-            </>
-          )}
-        </button>
-      </div>
       </div>
 
       {/* Rashei Teivot Dictionary Modal */}
-      {showAbbrModal && (
+                  {showAbbrModal && (
         <AbbreviationsModal
           customDict={customAbbreviations}
           onSaveDict={(newDict) => setCustomAbbreviations(newDict)}
           onClose={() => setShowAbbrModal(false)}
         />
       )}
-    </div>
-  );
+      </div>
+      </div>
+      </div>
+    );
 };
