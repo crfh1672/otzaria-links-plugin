@@ -399,18 +399,28 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
   };
 
   return (
-    <div className="w-full h-full p-4 md:p-6 flex flex-col bg-[color-mix(in_srgb,var(--color-surface-container-high)_5%,var(--color-surface))]" dir="rtl">
-      <div className="max-w-7xl mx-auto w-full h-full flex flex-col">
+    <div className="w-full h-[calc(100vh-4.5rem)] p-4 md:p-6 flex flex-col bg-[color-mix(in_srgb,var(--color-surface-container-high)_5%,var(--color-surface))] overflow-hidden" dir="rtl">
+      <div className="max-w-7xl mx-auto w-full h-full flex flex-col min-h-0">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0 items-stretch">
         
         {/* Right Pane: Book Browser (4 Cols) */}
         <div className="lg:col-span-4 bg-[var(--color-surface-container-high)] text-[var(--color-on-surface)] rounded-[var(--radius-md)] shadow-sm border border-[var(--color-outline-variant)] flex flex-col h-full overflow-hidden">
           {/* Top Bar of Right Pane */}
           <div className="p-3.5 flex flex-col gap-2 shrink-0">
-            <div className="flex items-center justify-between w-full">
-               <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-primary-subtle)] hover:brightness-95 text-[var(--color-primary)] rounded-[var(--radius-sm)] transition-colors border border-[var(--color-outline)]">
+            <div className="flex items-center gap-2 w-full">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-[var(--color-on-surface-variant)] absolute right-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="חיפוש מהיר בספרים..."
+                  className="w-full pr-8 pl-3 py-1.5 text-xs bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-[var(--radius-sm)] focus:outline-none focus:border-[var(--color-primary)] text-[var(--color-on-surface)]"
+                />
+              </div>
+              <label className="cursor-pointer shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-primary-subtle)] hover:brightness-95 text-[var(--color-primary)] rounded-[var(--radius-sm)] transition-colors border border-[var(--color-outline)]">
                 <Upload className="w-3.5 h-3.5 text-current" />
-                <span>ייבוא TXT חיצוני</span>
+                <span>ייבוא TXT</span>
                 <input
                   type="file"
                   accept=".txt,.text"
@@ -425,24 +435,13 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
                     setSelectedBookTitle(null);
                     setCommentaryContent('');
                   }}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-[var(--color-primary-subtle)] text-[var(--color-primary)] hover:opacity-90 rounded-[var(--radius-sm)] transition-colors border border-[var(--color-outline)]"
+                  className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-[var(--color-primary-subtle)] text-[var(--color-primary)] hover:opacity-90 rounded-[var(--radius-sm)] transition-colors border border-[var(--color-outline)]"
                   title="חזור לעץ הספרים"
                 >
                   <ArrowRight className="w-3.5 h-3.5" />
-                  <span>חזרה לעץ</span>
+                  <span>חזרה</span>
                 </button>
               )}
-            </div>
-            
-            <div className="relative w-full">
-              <Search className="w-4 h-4 text-[var(--color-on-surface-variant)] absolute right-2.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="חיפוש מהיר בספרים..."
-                className="w-full pr-8 pl-3 py-1.5 text-xs bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-[var(--radius-sm)] focus:outline-none focus:border-[var(--color-primary)] text-[var(--color-on-surface)]"
-              />
             </div>
           </div>
 
@@ -725,13 +724,13 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
               type="button"
               onClick={handleRun}
               disabled={!selectedBookTitle || isProcessing}
-              className="w-full inline-flex items-center justify-center gap-2 px-5 py-4 text-sm font-bold bg-[#c8b79b] text-[#4d4433] hover:brightness-95 active:opacity-100 disabled:opacity-75 disabled:cursor-not-allowed rounded-[var(--radius-md)] transition-all shadow-sm"
+              className="w-full inline-flex items-center justify-center gap-2 px-5 py-4 text-sm font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:brightness-105 active:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-[var(--radius-md)] transition-all shadow-md"
             >
               {isProcessing ? (
                 <span>מעבד מיפוי...</span>
               ) : (
                 <>
-                  <Play className="w-5 h-5 text-[#4d4433] fill-current" />
+                  <Play className="w-5 h-5 text-[var(--color-on-primary)] fill-current" />
                   <span>הפעל אלגוריתם מיפוי</span>
                 </>
               )}
