@@ -6,7 +6,7 @@ import { SetupMode } from './components/SetupMode';
 import { EditMode } from './components/EditMode';
 import { ProjectsModal } from './components/ProjectsModal';
 
-import { saveToCache, notifySuccess, notifyError } from './utils/otzariaBridge';
+import { saveToCache, getFromCache, listCacheKeys, notifySuccess, notifyError } from './utils/otzariaBridge';
 
 export default function App() {
   const [mode, setMode] = useState<'setup' | 'edit'>('setup');
@@ -85,6 +85,37 @@ export default function App() {
         }).catch(() => {});
       }
     }
+  }, []);
+
+  // Auto-load last active session on mount to prevent running the algorithm twice
+  useEffect(() => {
+    const autoLoadLastSession = async () => {
+      try {
+        const keys = await listCacheKeys();
+        if (keys && keys.length > 0) {
+          let mostRecentSession: SessionState | null = null;
+          let maxTimestamp = 0;
+
+          for (const k of keys) {
+            const item = await getFromCache<SessionState>(k);
+            if (item && item.lastModifiedTimestamp && item.lastModifiedTimestamp > maxTimestamp) {
+              maxTimestamp = item.lastModifiedTimestamp;
+              mostRecentSession = item;
+            }
+          }
+
+          if (mostRecentSession) {
+            setSession(mostRecentSession);
+            setMode('edit');
+            notifySuccess(`נמצא פרויקט שמור: "${mostRecentSession.commentaryTitle}" נטען אוטומטית`);
+          }
+        }
+      } catch (e) {
+        console.warn('Error auto-loading last session:', e);
+      }
+    };
+
+    autoLoadLastSession();
   }, []);
 
   // Run the 5-Step Parser algorithm and switch to Edit Mode

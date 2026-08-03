@@ -340,9 +340,9 @@ export function runLinkingParser(
   const tosafotDoc = tosafotRaw ? parseDocumentSegments(tosafotRaw) : null;
 
   const enableWordWeighting = config.useWordWeighting !== false;
-  const srcIdfMap = enableWordWeighting ? calculateDocumentIdfWeights(srcDoc.lines) : undefined;
-  const rashiIdfMap = (enableWordWeighting && rashiDoc) ? calculateDocumentIdfWeights(rashiDoc.lines) : undefined;
-  const tosafotIdfMap = (enableWordWeighting && tosafotDoc) ? calculateDocumentIdfWeights(tosafotDoc.lines) : undefined;
+  const srcIdfMap = enableWordWeighting ? calculateDocumentIdfWeights(srcDoc.lines, commDoc.lines) : undefined;
+  const rashiIdfMap = (enableWordWeighting && rashiDoc) ? calculateDocumentIdfWeights(rashiDoc.lines, commDoc.lines) : undefined;
+  const tosafotIdfMap = (enableWordWeighting && tosafotDoc) ? calculateDocumentIdfWeights(tosafotDoc.lines, commDoc.lines) : undefined;
 
   console.log(`  📄 commDoc.segments=${commDoc.segments.length}, srcDoc.segments=${srcDoc.segments.length}, rashiDoc=${rashiDoc ? rashiDoc.segments.length : 'null'}, tosafotDoc=${tosafotDoc ? tosafotDoc.segments.length : 'null'}`);
 
@@ -433,9 +433,9 @@ export function runLinkingParser(
         fullLineText: string,
         idfMap?: Record<string, number>,
         prevLineNum?: number | null
-      ): { lineNum: number | null; matchedCount: number; expectedWeight: number; topK: {lineNum: number; score: number}[] } => {
+      ): { lineNum: number | null; matchedCount: number; matchedWordCount: number; expectedWeight: number; topK: {lineNum: number; score: number}[] } => {
         if (!docLines || docLines.length === 0) {
-          return { lineNum: null, matchedCount: 0, expectedWeight: 0, topK: [] };
+          return { lineNum: null, matchedCount: 0, matchedWordCount: 0, expectedWeight: 0, topK: [] };
         }
 
         const validStart = Math.max(1, Math.min(start, docLines.length));
@@ -560,7 +560,7 @@ export function runLinkingParser(
         }
 
         if (bestLine !== null) {
-          return { lineNum: bestLine, matchedCount: bestMatchedCount, expectedWeight, topK: [{ lineNum: bestLine, score: bestMatchedCount }] };
+          return { lineNum: bestLine, matchedCount: bestMatchedCount, matchedWordCount: seg1Words.length, expectedWeight, topK: [{ lineNum: bestLine, score: bestMatchedCount }] };
         }
 
         const cleanDh = normalizeText(fullLineText);
@@ -577,10 +577,10 @@ export function runLinkingParser(
         isExplicit: boolean,
         idfMap?: Record<string, number>,
         prevLineNum?: number | null
-      ): { lineNum: number | null; matchedCount: number; expectedWeight: number; topK: {lineNum: number; score: number}[] } => {
+      ): { lineNum: number | null; matchedCount: number; matchedWordCount: number; expectedWeight: number; topK: {lineNum: number; score: number}[] } => {
         if (!docLines || docLines.length === 0) {
           console.log(`    ⚠️ searchLineInDoc: docLines is empty!`);
-          return { lineNum: null, matchedCount: 0, expectedWeight: 0, topK: [] };
+          return { lineNum: null, matchedCount: 0, matchedWordCount: 0, expectedWeight: 0, topK: [] };
         }
 
         const validStart = Math.max(1, Math.min(start, docLines.length));
@@ -605,6 +605,7 @@ export function runLinkingParser(
         for (const range of searchRanges) {
           let bestLine: number | null = null;
           let maxMatchedCount = 0;
+          let bestMatchedWordCount = 0;
           let minDistance = Infinity;
           let linesChecked = 0;
 
@@ -648,15 +649,18 @@ export function runLinkingParser(
 
             const enableFuzzy = config.useFuzzyMatching !== false;
             let currentMatchCount = 0;
+            let currentWordCount = 0;
 
             if (isExplicit) {
               // Explicit delimiter / כו': search for searchPhrase or expSearchPhrase in docLineNorm / expDocLineNorm
               if (docLineNorm.includes(searchPhrase) || expDocLineNorm.includes(expSearchPhrase)) {
                 // Perfect exact substring match gets maximum bonus based on expectedWeight
                 currentMatchCount = expectedWeight + 10;
+                currentWordCount = searchWords.length;
               } else {
                 // Word-by-word matching with fuzzy similarity score and word weighting
                 let matchedOrig = 0;
+                let countOrig = 0;
                 searchWords.forEach(sw => {
                   let maxSim = 0;
                   docWords.forEach(dw => {
@@ -665,9 +669,11 @@ export function runLinkingParser(
                   });
                   const wWeight = getCombinedWordWeight(sw, enableWordWeighting, idfMap);
                   matchedOrig += maxSim * wWeight;
+                  if (maxSim > 0.5) countOrig++;
                 });
 
                 let matchedExp = 0;
+                let countExp = 0;
                 expSearchWords.forEach(sw => {
                   let maxSim = 0;
                   expDocWords.forEach(dw => {
@@ -676,9 +682,16 @@ export function runLinkingParser(
                   });
                   const wWeight = getCombinedWordWeight(sw, enableWordWeighting, idfMap);
                   matchedExp += maxSim * wWeight;
+                  if (maxSim > 0.5) countExp++;
                 });
 
-                currentMatchCount = Math.max(matchedOrig, matchedExp);
+                if (matchedOrig >= matchedExp) {
+                  currentMatchCount = matchedOrig;
+                  currentWordCount = Math.max(1, countOrig);
+                } else {
+                  currentMatchCount = matchedExp;
+                  currentWordCount = Math.max(1, countExp);
+                }
               }
             } else {
               // No explicit delimiter: find longest contiguous sequence of matching words.
@@ -686,12 +699,13 @@ export function runLinkingParser(
               // line to avoid false positives from incidental word matches deep in the line.
               // Also caps sourceWords to MAX_DH_WORDS (12) to bound the search space.
               const MAX_DH_WORDS = 12;
-              const calcContiguousScore = (sourceWords: string[], targetWords: string[]): number => {
+              const calcContiguousScore = (sourceWords: string[], targetWords: string[]): { score: number; wordCount: number } => {
                 // Only consider starting positions within the first 3 words of the commentary line
                 const maxStartIdx = Math.min(3, sourceWords.length);
                 // Cap source to 12 words maximum
                 const cappedSource = sourceWords.slice(0, MAX_DH_WORDS);
                 let maxSeqScore = 0;
+                let bestWordCount = 0;
                 for (let startWIdx = 0; startWIdx < maxStartIdx; startWIdx++) {
                   for (let docWIdx = 0; docWIdx < targetWords.length; docWIdx++) {
                     let k = 0;
@@ -710,15 +724,18 @@ export function runLinkingParser(
                     }
                     if (seqScore > maxSeqScore) {
                       maxSeqScore = seqScore;
+                      bestWordCount = k;
                     }
                   }
                 }
-                return maxSeqScore;
+                return { score: maxSeqScore, wordCount: bestWordCount };
               };
 
-            const origScore = calcContiguousScore(fullWords, docWords);
-            const expScore = calcContiguousScore(expFullWords, expDocWords);
-            let rawMatchCount = Math.max(origScore, expScore);
+            const origRes = calcContiguousScore(fullWords, docWords);
+            const expRes = calcContiguousScore(expFullWords, expDocWords);
+            const winningRes = origRes.score >= expRes.score ? origRes : expRes;
+            let rawMatchCount = winningRes.score;
+            currentWordCount = winningRes.wordCount;
 
             // Apply Sequential Monotonicity Penalty if prevLineNum is available
             // Note: Very subtle bias (max 5% - 7%) so that out-of-order commentaries are not penalized
@@ -757,6 +774,7 @@ export function runLinkingParser(
 
               if (currentMatchCount > maxMatchedCount) {
                 maxMatchedCount = currentMatchCount;
+                bestMatchedWordCount = currentWordCount;
                 bestLine = lNum;
                 minDistance = dist;
                 bestLineFpDist = fpDist;
@@ -764,11 +782,13 @@ export function runLinkingParser(
                 // Primary tie-break: closer position
                 if (dist < minDistance) {
                   bestLine = lNum;
+                  bestMatchedWordCount = currentWordCount;
                   minDistance = dist;
                   bestLineFpDist = fpDist;
                 } else if (dist === minDistance && fpDist < bestLineFpDist) {
                   // Secondary tie-break: better nikud fingerprint match
                   bestLine = lNum;
+                  bestMatchedWordCount = currentWordCount;
                   bestLineFpDist = fpDist;
                 }
               }
@@ -793,15 +813,15 @@ export function runLinkingParser(
 
           console.log(`    ✓ searchLineInDoc checked ${linesChecked} lines, bestLine=${bestLine}, maxMatchedCount=${maxMatchedCount}`);
           if (bestLine !== null) {
-            return { lineNum: bestLine, matchedCount: maxMatchedCount, expectedWeight, topK: topCandidates.map(c => ({ lineNum: c.lineNum, score: c.score })) };
+            return { lineNum: bestLine, matchedCount: maxMatchedCount, matchedWordCount: bestMatchedWordCount, expectedWeight, topK: topCandidates.map(c => ({ lineNum: c.lineNum, score: c.score })) };
           }
         }
 
-        return { lineNum: null, matchedCount: 0, expectedWeight: 0, topK: [] };
+        return { lineNum: null, matchedCount: 0, matchedWordCount: 0, expectedWeight: 0, topK: [] };
       };
 
-      let srcMatchRes = { lineNum: null as number | null, matchedCount: 0, expectedWeight: 0, topK: [] as {lineNum: number; score: number}[] };
-      let secMatchRes = { lineNum: null as number | null, matchedCount: 0, expectedWeight: 0, topK: [] as {lineNum: number; score: number}[] };
+      let srcMatchRes = { lineNum: null as number | null, matchedCount: 0, matchedWordCount: 0, expectedWeight: 0, topK: [] as {lineNum: number; score: number}[] };
+      let secMatchRes = { lineNum: null as number | null, matchedCount: 0, matchedWordCount: 0, expectedWeight: 0, topK: [] as {lineNum: number; score: number}[] };
 
       // Search in secondary source if routed (unless it's 'בא"ד', in which case we don't search, we inherit)
       if (!shouldInheritLine && targetSecondary === 'rashi' && rashiDoc) {
@@ -955,6 +975,12 @@ export function runLinkingParser(
           confidence: calculateLinkConfidence(false, c.score, wordLength, isExplicitDelimiter, expWeight)
         }));
 
+        const targetDocLines = isSecondaryLink
+          ? (targetSecondary === 'rashi' ? rashiDoc?.lines : tosafotDoc?.lines)
+          : srcDoc.lines;
+        const targetLineText = targetDocLines && targetDocLines[matchedSourceLineNum - 1] ? targetDocLines[matchedSourceLineNum - 1] : '';
+        const matchRange = findSourceMatchRange(targetLineText, dhText || cleanDh) || undefined;
+
         const newLink: OtzariaLink = {
           line_index_1: cLineIdx,
           line_index_2: matchedSourceLineNum,
@@ -968,6 +994,7 @@ export function runLinkingParser(
           dhText: dhText || cleanDh,
           confidence,
           status,
+          matchRange,
           candidates: linkCandidates.length > 0 ? linkCandidates : undefined,
           candidateIndex: 0
         };
@@ -983,9 +1010,9 @@ export function runLinkingParser(
       if (isExplicitDelimiter && dhText) {
         dhWordCount = dhText.split(/\s+/).filter(Boolean).length;
       } else {
-        dhWordCount = srcMatchRes.matchedCount > 0 
-          ? srcMatchRes.matchedCount 
-          : (secMatchRes.matchedCount > 0 ? secMatchRes.matchedCount : Math.min(4, wordsInLine.length));
+        dhWordCount = srcMatchRes.matchedWordCount > 0 
+          ? srcMatchRes.matchedWordCount 
+          : (secMatchRes.matchedWordCount > 0 ? secMatchRes.matchedWordCount : Math.min(4, wordsInLine.length));
       }
 
       dhHighlights[cLineIdx] = {

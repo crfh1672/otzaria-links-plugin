@@ -416,30 +416,61 @@ export function expandAbbreviationsInText(
   // Split sourceText into words/tokens
   const words = sourceText.split(/(\s+)/);
 
+  const nonWsIndices: number[] = [];
   for (let i = 0; i < words.length; i++) {
-    const word = words[i].trim();
-    if (!word) continue;
+    if (words[i].trim() !== '') {
+      nonWsIndices.push(i);
+    }
+  }
 
-    const cleanedWord = cleanAbbrKey(word);
-    
-    // Check if word or cleanedWord is in dictionary
-    let options = dict[word] || dict[cleanedWord] || NORMALIZED_ABBREVIATIONS_MAP[cleanedWord] || NORMALIZED_ABBREVIATIONS_MAP[word];
+  for (let idx = 0; idx < nonWsIndices.length; idx++) {
+    // Try Trigram (3), then Bigram (2), then Single (1)
+    for (let len = 3; len >= 1; len--) {
+      const endIdx = idx + len - 1;
+      if (endIdx >= nonWsIndices.length) continue;
 
-    if (options && options.length > 0) {
-      // Find which expansion option exists in targetContext
-      let matchedOption: string | null = null;
+      const iStart = nonWsIndices[idx];
+      const iEnd = nonWsIndices[endIdx];
+      const sliceWords = words.slice(iStart, iEnd + 1);
+      const rawJoined = sliceWords.join('');
+      const cleanedJoined = cleanAbbrKey(rawJoined);
+      const noSpaceJoined = cleanedJoined.replace(/\s+/g, '');
+      const spaceJoined = sliceWords.map(w => cleanAbbrKey(w)).join(' ');
+      const rawNoSpace = rawJoined.replace(/\s+/g, '').replace(/[״"׳’‘´']/g, '');
 
-      for (const opt of options) {
-        // Remove nikud from option for checking
-        const optNorm = opt.replace(/[\u0591-\u05C7]/g, '');
-        if (targetNorm.includes(optNorm)) {
-          matchedOption = opt;
-          break;
-        }
+      const lookupKeys = [
+        rawJoined,
+        cleanedJoined,
+        noSpaceJoined,
+        spaceJoined,
+        rawNoSpace
+      ];
+
+      let options: string[] | undefined;
+      for (const k of lookupKeys) {
+        if (!k) continue;
+        options = dict[k] || NORMALIZED_ABBREVIATIONS_MAP[k];
+        if (options && options.length > 0) break;
       }
 
-      if (matchedOption) {
-        words[i] = matchedOption;
+      if (options && options.length > 0) {
+        let matchedOption: string | null = null;
+        for (const opt of options) {
+          const optNorm = opt.replace(/[\u0591-\u05C7]/g, '');
+          if (targetNorm.includes(optNorm)) {
+            matchedOption = opt;
+            break;
+          }
+        }
+
+        if (matchedOption) {
+          words[iStart] = matchedOption;
+          for (let k = iStart + 1; k <= iEnd; k++) {
+            words[k] = '';
+          }
+          idx = endIdx; // advance past consumed tokens
+          break;
+        }
       }
     }
   }

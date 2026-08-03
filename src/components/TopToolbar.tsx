@@ -99,7 +99,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
       ];
 
       const normalizeForCsv = (val: any) => escapeCsv(val === undefined || val === null ? '' : val);
-      const sourceIdfWeights = calculateDocumentIdfWeights(session.sourceLines);
+      const sourceIdfWeights = calculateDocumentIdfWeights(session.sourceLines, session.commentaryLines);
       const analysisRows = session.links.map(link => {
         const commentaryLine = session.commentaryLines[link.line_index_1 - 1] || '';
         const sourceLine = session.sourceLines[link.line_index_2 - 1] || '';
@@ -197,7 +197,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         {mode === 'edit' && onToggleNavDrawer && (
             <button
               onClick={onToggleNavDrawer}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all shadow-xs border ${
+              className={`inline-flex items-center justify-center p-2 rounded-lg transition-all shadow-xs border ${
                 isNavDrawerOpen
                   ? 'bg-[var(--color-primary)] text-[var(--color-on-primary)] border-[var(--color-primary)]'
                   : 'bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] border-[var(--color-outline)]'
@@ -205,7 +205,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
               title="סרגל ניווט וחיפוש"
             >
               <ListTree className="w-3.5 h-3.5" />
-              <span>ניווט וחיפוש</span>
+              
               {session && (
                 <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-100 font-mono mr-0.5">
                   {parseDocumentSegments(session.commentaryLines.join('\n')).segments.length}
@@ -237,31 +237,31 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           {mode === 'edit' && (
             <button
               onClick={onReturnToSetup}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] rounded-lg transition-colors border border-[var(--color-outline)]"
+              className="inline-flex items-center justify-center p-2 font-semibold bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] rounded-lg transition-colors border border-[var(--color-outline)]"
               title="חזור למסך בחירת ספרים"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>שינוי ספרים</span>
+              
             </button>
           )}
 
           <button
             onClick={onSaveSession}
             disabled={!session}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all shadow-xs"
+            className="inline-flex items-center justify-center p-2 bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all shadow-xs"
             title="שמור מצב נוכחי למטמון המקומי"
           >
             <Save className="w-3.5 h-3.5" />
-            <span>שמירה</span>
+            
           </button>
 
           <button
             onClick={onOpenProjects}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] rounded-lg transition-colors border border-[var(--color-outline)]"
+            className="inline-flex items-center justify-center p-2 font-semibold bg-[var(--color-surface)] text-[var(--color-on-surface)] hover:bg-[var(--color-outline-variant)] rounded-lg transition-colors border border-[var(--color-outline)]"
             title="פתח פרויקט שמור מהמטמון"
           >
             <FolderOpen className="w-3.5 h-3.5 text-current" />
-            <span>פתיחה</span>
+            
           </button>
 
           
@@ -281,11 +281,11 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 <button
             onClick={handleExportZip}
             disabled={!session}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-emerald-700 dark:bg-emerald-600 text-white hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all shadow-xs"
+            className="inline-flex items-center justify-center p-2 bg-emerald-700 dark:bg-emerald-600 text-white hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all shadow-xs"
             title="ייצא קובץ ZIP עם _links.json וקובץ TXT מעודכן"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>יצוא ZIP</span>
+            
           </button>
 
           

@@ -48,15 +48,16 @@ export function getHebrewWordWeight(word: string, enableWeighting: boolean = tru
 }
 
 /**
- * Calculates document-wide word frequency weights (IDF factor) across source lines.
+ * Calculates document-wide word frequency weights (IDF factor) across source lines and commentary lines.
  * Words appearing in many lines get lower weights; rare terms in the document get higher weights.
  */
-export function calculateDocumentIdfWeights(docLines: string[]): Record<string, number> {
-  const lineCount = docLines.length;
+export function calculateDocumentIdfWeights(docLines: string[], commentaryLines?: string[]): Record<string, number> {
+  const allLines = [...docLines, ...(commentaryLines || [])];
+  const lineCount = allLines.length;
   if (lineCount === 0) return {};
 
   const docFreq: Record<string, number> = {};
-  docLines.forEach(line => {
+  allLines.forEach(line => {
     if (!line) return;
     const norm = line.replace(/[\u0591-\u05C7]/g, '').replace(/[^\u05D0-\u05EA0-9\s]+/g, ' ');
     const uniqueWordsInLine = new Set(norm.split(/\s+/).filter(Boolean));
@@ -68,12 +69,12 @@ export function calculateDocumentIdfWeights(docLines: string[]): Record<string, 
   const idfWeights: Record<string, number> = {};
   Object.entries(docFreq).forEach(([word, freq]) => {
     const ratio = freq / lineCount;
-    if (ratio > 0.15) {
-      // Extremely frequent in document (>15% of lines) -> downweight
+    if (ratio > 0.08) {
+      // Frequent in document (>8% of lines) -> downweight
       idfWeights[word] = Math.max(0.35, 1 - ratio * 2);
-    } else if (ratio < 0.02) {
-      // Rare term in document (<2% of lines) -> boost up to 1.2
-      idfWeights[word] = 1.2;
+    } else if (ratio < 0.01) {
+      // Rare term in document (<1% of lines) -> boost up to 1.5
+      idfWeights[word] = 1.5;
     } else {
       idfWeights[word] = 1.0;
     }

@@ -58,7 +58,7 @@ const getTargetColors = (target?: 'rashi' | 'tosafot' | 'primary' | string) => {
 };
 
 
-const CollapsibleText = ({ text, isPrimary, links, targetType }: { text: string; isPrimary: boolean; links?: OtzariaLink[]; targetType?: 'rashi' | 'tosafot' | 'primary' | string }) => {
+const CollapsibleText = ({ text, isPrimary, links, targetType, onHoverMatch }: { text: string; isPrimary: boolean; links?: OtzariaLink[]; targetType?: 'rashi' | 'tosafot' | 'primary' | string; onHoverMatch?: (id: number | null) => void }) => {
   const [isExpanded, setIsExpanded] = useState(isPrimary);
 
   // Parse words and determine highlights if links are provided
@@ -80,7 +80,7 @@ const CollapsibleText = ({ text, isPrimary, links, targetType }: { text: string;
     const highlightMap = new Map<number, string[]>(); // wordIndex -> array of link line_index_1
     links.forEach(link => {
       if (link.dhText) {
-        const range = findSourceMatchRange(text, link.dhText);
+        const range = link.matchRange || findSourceMatchRange(text, link.dhText);
         if (range) {
           for (let i = 0; i < range.wordCount; i++) {
             const idx = range.wordStart + i;
@@ -149,7 +149,16 @@ const CollapsibleText = ({ text, isPrimary, links, targetType }: { text: string;
               data-source-match-for={linkIdsStr}
               data-target-type={targetType || 'primary'}
               id={uniqueId}
-              className="bg-yellow-200/60 dark:bg-yellow-500/30 border border-gray-400 dark:border-gray-600 rounded px-1.5 py-0.5 mx-0.5"
+              onMouseEnter={() => {
+                const firstId = parseInt(linkIdsStr.split(' ')[0], 10);
+                if (!isNaN(firstId) && onHoverMatch) {
+                  onHoverMatch(firstId);
+                }
+              }}
+              onMouseLeave={() => {
+                if (onHoverMatch) onHoverMatch(null);
+              }}
+              className="bg-yellow-200/60 dark:bg-yellow-500/30 hover:bg-yellow-300 dark:hover:bg-yellow-400/50 border border-gray-400 dark:border-gray-600 rounded px-1.5 py-0.5 mx-0.5 transition-all duration-200 cursor-help"
             >
               {seqWords.join('')}
             </mark>
@@ -227,6 +236,9 @@ export const EditMode: React.FC<EditModeProps> = ({
 }) => {
   const [editingCommLineIdx, setEditingCommLineIdx] = useState<number | null>(null);
   const [draggedCommLineIdx, setDraggedCommLineIdx] = useState<number | null>(null);
+  const [dragOverSourceIdx, setDragOverSourceIdx] = useState<number | null>(null);
+  const [dragOverSourceType, setDragOverSourceType] = useState<'primary' | 'rashi' | 'tosafot' | null>(null);
+  const [hoveredCommLineIdx, setHoveredCommLineIdx] = useState<number | null>(null);
 
   // Filtering & Drawer state
   const [sourceSearchQuery, setSourceSearchQuery] = useState('');
@@ -238,6 +250,13 @@ export const EditMode: React.FC<EditModeProps> = ({
 
   const updateSvgLines = useCallback(() => {
     if (!containerRef.current) return;
+    
+    // Hide visual connection lines on mobile screens where columns stack vertically
+    if (window.innerWidth < 768) {
+      setSvgLines([]);
+      return;
+    }
+
     const containerRect = containerRef.current.getBoundingClientRect();
     const newLines: { id: string; x1: number; y1: number; x2: number; y2: number; color?: string }[] = [];
 
@@ -248,7 +267,7 @@ export const EditMode: React.FC<EditModeProps> = ({
       const lineIdx1 = parseInt(lineIdx1Str, 10);
 
       // Do not draw connecting line for inherited links
-      const linkObj = session.links.find(l => l.line_index_1 === lineIdx1);
+      const linkObj = session.links.find(l => l.line_index_1 === lineIdx1 || l.line_index_1.toString() === lineIdx1Str);
       if (linkObj?.isInherited) {
         return;
       }
@@ -268,7 +287,8 @@ export const EditMode: React.FC<EditModeProps> = ({
            srcRight = Math.max(srcRight, r.right);
         });
 
-        // Draw from the commentary box container itself (left side in RTL) to the matched words in the source (right side)
+        // Draw from the commentary box container left edge (facing left column in RTL layout)
+        // to the right edge of the matched words in the source column (facing right column)
         const x1 = commBoxRect.left - containerRect.left;
         const y1 = commBoxRect.top + commBoxRect.height / 2 - containerRect.top;
 
@@ -645,6 +665,76 @@ export const EditMode: React.FC<EditModeProps> = ({
     setDraggedCommLineIdx(commLineIdx1);
   };
 
+  const floatingSourceLines = useMemo(() => {
+    if (draggedCommLineIdx === null) return [];
+
+    const currentLink = links.find(l => l.line_index_1 === draggedCommLineIdx || l.line_index_1.toString() === draggedCommLineIdx.toString());
+    const results: { index: number; text: string; targetType: 'primary' | 'rashi' | 'tosafot'; targetLabel: string; isCurrent: boolean }[] = [];
+
+    // 1. Primary Source lines around target
+    const primTarget = (currentLink && !currentLink.secondaryTarget)
+      ? currentLink.line_index_2 
+      : Math.max(1, Math.min(sourceLines.length, Math.floor((draggedCommLineIdx / commentaryLines.length) * sourceLines.length)));
+    const primStart = Math.max(1, primTarget - 4);
+    const primEnd = Math.min(sourceLines.length, primTarget + 4);
+    for (let i = primStart; i <= primEnd; i++) {
+      results.push({
+        index: i,
+        text: sourceLines[i - 1] || '',
+        targetType: 'primary',
+        targetLabel: config.targetBookName,
+        isCurrent: !currentLink?.secondaryTarget && currentLink?.line_index_2 === i
+      });
+    }
+
+    // 2. Rashi lines around target if rashiLines exists
+    if (rashiLines && rashiLines.length > 0) {
+      const rashiTarget = currentLink?.secondaryTarget === 'rashi' 
+        ? currentLink.secondary_line_index! 
+        : Math.max(1, Math.min(rashiLines.length, Math.floor((draggedCommLineIdx / commentaryLines.length) * rashiLines.length)));
+      const rashiStart = Math.max(1, rashiTarget - 3);
+      const rashiEnd = Math.min(rashiLines.length, rashiTarget + 3);
+      for (let i = rashiStart; i <= rashiEnd; i++) {
+        results.push({
+          index: i,
+          text: rashiLines[i - 1] || '',
+          targetType: 'rashi',
+          targetLabel: 'רש"י',
+          isCurrent: currentLink?.secondaryTarget === 'rashi' && currentLink?.secondary_line_index === i
+        });
+      }
+    }
+
+    // 3. Tosafot lines around target if tosafotLines exists
+    if (tosafotLines && tosafotLines.length > 0) {
+      const tosafotTarget = currentLink?.secondaryTarget === 'tosafot' 
+        ? currentLink.secondary_line_index! 
+        : Math.max(1, Math.min(tosafotLines.length, Math.floor((draggedCommLineIdx / commentaryLines.length) * tosafotLines.length)));
+      const tosafotStart = Math.max(1, tosafotTarget - 3);
+      const tosafotEnd = Math.min(tosafotLines.length, tosafotTarget + 3);
+      for (let i = tosafotStart; i <= tosafotEnd; i++) {
+        results.push({
+          index: i,
+          text: tosafotLines[i - 1] || '',
+          targetType: 'tosafot',
+          targetLabel: 'תוספות',
+          isCurrent: currentLink?.secondaryTarget === 'tosafot' && currentLink?.secondary_line_index === i
+        });
+      }
+    }
+
+    return results;
+  }, [draggedCommLineIdx, links, sourceLines, rashiLines, tosafotLines, config.targetBookName, commentaryLines.length]);
+
+  const handleDropOnSourceLine = (srcLineIdx: number, targetType: 'primary' | 'rashi' | 'tosafot') => {
+    if (draggedCommLineIdx === null) return;
+    const secTarget = targetType === 'primary' ? undefined : targetType;
+    handleSaveLink(draggedCommLineIdx, srcLineIdx, secTarget);
+    setDraggedCommLineIdx(null);
+    setDragOverSourceIdx(null);
+    setDragOverSourceType(null);
+  };
+
   // Render a commentary line box
   const renderCommentaryBox = (linkObj?: OtzariaLink, commIdx1?: number) => {
     const lineIdx1 = linkObj ? linkObj.line_index_1 : commIdx1!;
@@ -669,6 +759,9 @@ export const EditMode: React.FC<EditModeProps> = ({
         key={`comm-${lineIdx1}`}
         draggable
         onDragStart={() => handleDragStart(lineIdx1)}
+        onDragEnd={() => setDraggedCommLineIdx(null)}
+        onMouseEnter={() => setHoveredCommLineIdx(lineIdx1)}
+        onMouseLeave={() => setHoveredCommLineIdx(null)}
         className={`group relative p-4 md:p-5 rounded-2xl border shadow-2xs transition-all ${bgStyle} hover:shadow-xs hover:border-[var(--color-primary)] space-y-2.5`}
       >
         {/* Top Indicators */}
@@ -849,17 +942,41 @@ export const EditMode: React.FC<EditModeProps> = ({
       <div className="space-y-4 relative" ref={containerRef}>
         <svg className="absolute inset-0 pointer-events-none z-10" style={{ width: '100%', height: '100%' }}>
           {svgLines.map(line => {
+            const lineIdNum = parseInt(line.id.replace('line-', ''), 10);
+            const isHovered = hoveredCommLineIdx === lineIdNum;
+            const isAnyHovered = hoveredCommLineIdx !== null;
+            
             const offset = Math.abs(line.x1 - line.x2) / 2;
             const pathData = `M ${line.x1} ${line.y1} C ${line.x1 - offset} ${line.y1}, ${line.x2 + offset} ${line.y2}, ${line.x2} ${line.y2}`;
+            
+            let opacity = "0.55";
+            let strokeWidth = "2.5";
+            if (isAnyHovered) {
+              opacity = isHovered ? "0.95" : "0.15";
+              strokeWidth = isHovered ? "3.5" : "1.5";
+            }
+
             return (
-              <path 
-                key={line.id} 
-                d={pathData} 
-                stroke={line.color || "#10b981"}
-                strokeWidth="2.5" 
-                fill="none"
-                opacity="0.5"
-              />
+              <g key={line.id}>
+                {isHovered && (
+                  <path
+                    d={pathData}
+                    stroke={line.color || "var(--color-primary)"}
+                    strokeWidth="7"
+                    fill="none"
+                    opacity="0.2"
+                    className="transition-all duration-300 animate-pulse"
+                  />
+                )}
+                <path 
+                  d={pathData} 
+                  stroke={line.color || "var(--color-primary)"}
+                  strokeWidth={strokeWidth} 
+                  fill="none"
+                  opacity={opacity}
+                  className="transition-all duration-300"
+                />
+              </g>
             );
           })}
         </svg>
@@ -925,6 +1042,7 @@ export const EditMode: React.FC<EditModeProps> = ({
                         isPrimary={!firstLinkObj.secondaryTarget}
                         links={group.links}
                         targetType={targetType}
+                        onHoverMatch={setHoveredCommLineIdx}
                       />
                     ) : (
                       <div className="p-5 rounded-xl border border-dashed border-[var(--color-outline)] text-center text-xs text-[var(--color-on-surface-variant)]">
@@ -1164,6 +1282,74 @@ export const EditMode: React.FC<EditModeProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Small Panes for Drag and Drop Re-linking */}
+      {draggedCommLineIdx !== null && (
+        <div 
+          className="fixed left-6 top-24 bottom-24 w-80 bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-2xl shadow-2xl p-4 flex flex-col gap-3 z-[100] animate-fade-in text-right select-none"
+          dir="rtl"
+          onDragOver={(e) => e.preventDefault()}
+        >
+          <div className="flex items-center justify-between border-b border-[var(--color-outline-variant)] pb-3">
+            <h4 className="text-sm font-bold text-[var(--color-primary)] font-serif">
+              שורות מקור לקישור מהיר
+            </h4>
+            <span className="text-[10px] bg-[var(--color-secondary-subtle)] px-2 py-0.5 rounded-full text-[var(--color-on-secondary-container)] font-mono font-bold">
+              שורה {draggedCommLineIdx}
+            </span>
+          </div>
+
+          <p className="text-xs text-[var(--color-on-surface-variant)] leading-relaxed font-medium">
+            גרור את כרטיס הפירוש ושחרר אותו על אחת השורות למטה כדי לעדכן את הקישור במיידי:
+          </p>
+
+          <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+            {floatingSourceLines.map((srcLine) => {
+              const isOver = dragOverSourceIdx === srcLine.index && dragOverSourceType === srcLine.targetType;
+              const isCurrent = srcLine.isCurrent;
+              
+              let cardBg = "bg-[var(--color-surface-container-low)] border-[var(--color-outline-variant)]";
+              if (isCurrent) {
+                cardBg = "bg-[var(--color-primary-subtle)] border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]";
+              }
+              if (isOver) {
+                cardBg = "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 scale-[1.02] shadow-md ring-2 ring-emerald-500";
+              }
+
+              return (
+                <div
+                  key={`${srcLine.targetType}-${srcLine.index}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (dragOverSourceIdx !== srcLine.index || dragOverSourceType !== srcLine.targetType) {
+                      setDragOverSourceIdx(srcLine.index);
+                      setDragOverSourceType(srcLine.targetType);
+                    }
+                  }}
+                  onDragLeave={() => {
+                    setDragOverSourceIdx(null);
+                    setDragOverSourceType(null);
+                  }}
+                  onDrop={() => handleDropOnSourceLine(srcLine.index, srcLine.targetType)}
+                  className={`p-3 rounded-xl border transition-all duration-200 cursor-pointer flex flex-col gap-1.5 ${cardBg}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-[var(--color-on-surface)] font-mono">
+                      שורה {srcLine.index}
+                    </span>
+                    <span className="text-[10px] bg-[var(--color-surface-container-high)] text-[var(--color-on-surface-variant)] px-2 py-0.5 rounded font-bold font-serif">
+                      {srcLine.targetLabel}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--color-on-surface-variant)] leading-relaxed line-clamp-2 font-sans font-medium" title={srcLine.text}>
+                    {srcLine.text || '(שורה ריקה)'}
+                  </p>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

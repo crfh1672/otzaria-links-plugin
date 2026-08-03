@@ -28,6 +28,9 @@ export interface OtzariaLink {
   confidence?: number;        // Confidence level score (0 - 100%)
   status?: 'approved' | 'pending'; // Approval state for link review
 
+  // Pre-calculated visual match range in target source line
+  matchRange?: { wordStart: number; wordCount: number };
+
   // Top-K alternative candidates (up to 3, sorted best-first).
   // candidates[0] mirrors line_index_2 (the selected candidate).
   // The user can cycle through candidates[1], candidates[2] without re-running the algorithm.
