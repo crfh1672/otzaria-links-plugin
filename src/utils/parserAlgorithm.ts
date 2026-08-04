@@ -421,22 +421,19 @@ export function runLinkingParser(
         }
       }
 
+      // Detect explicit reference to the PRIMARY source (גמרא / משנה etc.) — used below to
+      // suppress silent inheritance when such an explicit reference fails to find a match.
+      let explicitPrimaryTarget = false;
+      if (!targetSecondary) {
+        if (GEMARA_KEYWORDS_NORM.some(kw => cleanedPrefix.startsWith(kw)) || MISHNA_KEYWORDS_NORM.some(kw => cleanedPrefix.startsWith(kw))) {
+          explicitPrimaryTarget = true;
+          console.log(`  ✅ Detected explicit primary-source keyword (Gemara/Mishna). cleanedPrefix='${cleanedPrefix}'`);
+        }
+      }
+
       const isBaadRegex = /^(?:שם\s+)?(?:או"ד|באו"ד|א"ד|בא"ד|אד|באד|אוד|באוד)(?:\s|$|[:.\-])/i;
       const isBaad = Boolean(normalizedPrefixLine.match(isBaadRegex));
       const isJustSham = trimmedLine.startsWith('שם') && !normalizedPrefixLine.match(/^שם\s+(?:ד"ה|דה|בד"ה|בדה)(?:\s|$|[:.\-])/i);
-
-      // Bug #6 FIX (per request): a line that opens with an explicit reference — to the primary
-      // source (גמ'/גמרא/משנה/מתני'), to a secondary source (רש"י/תוספות keywords), or to a
-      // dibur hamatchil (ד"ה/בד"ה) — must never receive inheritance. Such a line is making its own
-      // explicit claim about what it's quoting/where it belongs; if that claim's own search fails,
-      // it should be reported as unlinked rather than silently backfilled with an unrelated line's
-      // source. (Lines starting with 'שם' are a different, deliberate inheritance instruction and
-      // are unaffected — see isJustSham/isBaad above.)
-      const startsWithSourceRef = SOURCE_CONTEXT_STRIP_RE.test(cleanedPrefix);
-      const startsWithSecondaryRef = RASHI_KEYWORDS_NORM.some(kw => lineForKeywordCheck.startsWith(kw))
-        || TOSAFOT_KEYWORDS_NORM.some(kw => lineForKeywordCheck.startsWith(kw));
-      const startsWithDh = /^(?:בד"ה|בדה|ד"ה|דה)(?:\s|$|[:.\-])/i.test(normalizedPrefixLine);
-      const isExplicitlyRoutedLine = startsWithSourceRef || startsWithSecondaryRef || startsWithDh;
 
       // Handle Inheritance ("שם" - Step 5)
       const shouldInheritLine = isBaad || isJustSham;
@@ -501,51 +498,23 @@ export function runLinkingParser(
         let maxScore = -Infinity;
         let bestMatchedCount = 0;
 
-        // Bug #3 FIX: Require the matched words of a segment to appear as a CONTIGUOUS run
-        // in the target line (like calcContiguousScore does for the main search), instead of
-        // scoring each word independently against the whole line ("bag of words"). A bag-of-words
-        // score can be inflated by words that are scattered anywhere in the line in any order,
-        // which both creates false positives on wrong lines and doesn't reflect the fact that a
-        // quoted phrase should read as a real consecutive sequence in the source.
-        const calcSegmentContiguousScore = (segWords: string[], targetWords: string[]): number => {
-          if (segWords.length === 0 || targetWords.length === 0) return 0;
-          let maxSeqScore = 0;
-          for (let docWIdx = 0; docWIdx < targetWords.length; docWIdx++) {
-            let k = 0;
-            let seqScore = 0;
-            while (k < segWords.length && docWIdx + k < targetWords.length) {
-              const sim = getWordSimilarity(segWords[k], targetWords[docWIdx + k], enableFuzzy);
-              if (sim <= 0) break;
-              const wWeight = getCombinedWordWeight(segWords[k], enableWordWeighting, idfMap);
-              seqScore += sim * wWeight;
-              k++;
-            }
-            if (seqScore > maxSeqScore) maxSeqScore = seqScore;
-          }
-          return maxSeqScore;
-        };
-
         const scoreSegment = (segWords: string[], docLineNorm: string, docWords: string[]): number => {
           if (segWords.length === 0) return 0;
           const segPhrase = segWords.join(' ');
           if (docLineNorm.includes(segPhrase)) {
             return segWords.reduce((sum, w) => sum + getCombinedWordWeight(w, enableWordWeighting, idfMap) * 1.5, 5);
           }
-          return calcSegmentContiguousScore(segWords, docWords);
-        };
-
-        // Bug #4 FIX: expand ראשי תיבות (abbreviations) contextually for EVERY segment, not just
-        // the first one. A DH like "...כו' ק"ו..." needs "ק"ו" expanded to "קל וחומר" to match the
-        // spelled-out source text, exactly as we already did for the anchor segment.
-        const scoreSegmentWithAbbrev = (segText: string, segWordsRaw: string[], targetLineNorm: string, targetWords: string[]): number => {
-          if (segWordsRaw.length === 0) return 0;
-          const plainScore = scoreSegment(segWordsRaw, targetLineNorm, targetWords);
-          if (config.useAbbreviationExpansion === false) return plainScore;
-          const expSeg = expandAbbreviationsInText(segText, targetLineNorm, abbrDict);
-          const expSegWords = normalizeText(expSeg).split(/\s+/).filter(Boolean);
-          if (expSegWords.length === 0 || expSegWords.join(' ') === segWordsRaw.join(' ')) return plainScore;
-          const expScore = scoreSegment(expSegWords, targetLineNorm, targetWords);
-          return Math.max(plainScore, expScore);
+          let matched = 0;
+          segWords.forEach(sw => {
+            let maxSim = 0;
+            docWords.forEach(dw => {
+              const sim = getWordSimilarity(sw, dw, enableFuzzy);
+              if (sim > maxSim) maxSim = sim;
+            });
+            const wWeight = getCombinedWordWeight(sw, enableWordWeighting, idfMap);
+            matched += maxSim * wWeight;
+          });
+          return matched;
         };
 
         for (let lNum = validStart; lNum <= validEnd; lNum++) {
@@ -556,7 +525,13 @@ export function runLinkingParser(
           const docWords = docLineNorm.split(/\s+/).filter(Boolean);
           if (docWords.length === 0) continue;
 
-          const score1 = scoreSegmentWithAbbrev(seg1, seg1Words, docLineNorm, docWords);
+          const expSeg1 = config.useAbbreviationExpansion !== false ? expandAbbreviationsInText(seg1, docLineNorm, abbrDict) : seg1;
+          const expSeg1Words = normalizeText(expSeg1).split(/\s+/).filter(Boolean);
+
+          const score1 = Math.max(
+            scoreSegment(seg1Words, docLineNorm, docWords),
+            scoreSegment(expSeg1Words, docLineNorm, docWords)
+          );
 
           const minSeg1Threshold = Math.max(0.4, seg1ExpectedWeight * 0.4);
           if (score1 < minSeg1Threshold) continue;
@@ -572,7 +547,14 @@ export function runLinkingParser(
               if (!nextRaw) continue;
               const nextNorm = normalizeText(nextRaw);
               const nextWords = nextNorm.split(/\s+/).filter(Boolean);
-              const s2 = scoreSegmentWithAbbrev(seg2, seg2Words, nextNorm, nextWords);
+              // Expand abbreviations in segment 2 (context-dependent on the candidate line),
+              // same as segment 1 above, so ר"ת inside the middle clause of a כו'-quote resolves too.
+              const expSeg2 = config.useAbbreviationExpansion !== false ? expandAbbreviationsInText(seg2, nextNorm, abbrDict) : seg2;
+              const expSeg2Words = normalizeText(expSeg2).split(/\s+/).filter(Boolean);
+              const s2 = Math.max(
+                scoreSegment(seg2Words, nextNorm, nextWords),
+                scoreSegment(expSeg2Words, nextNorm, nextWords)
+              );
               if (s2 > bestSeg2Score) {
                 bestSeg2Score = s2;
                 if (s2 >= 0.4) foundSeq2 = true;
@@ -588,7 +570,13 @@ export function runLinkingParser(
               if (!nextRaw) continue;
               const nextNorm = normalizeText(nextRaw);
               const nextWords = nextNorm.split(/\s+/).filter(Boolean);
-              const s3 = scoreSegmentWithAbbrev(seg3, seg3Words, nextNorm, nextWords);
+              // Expand abbreviations in segment 3 as well, for the same reason as segment 2.
+              const expSeg3 = config.useAbbreviationExpansion !== false ? expandAbbreviationsInText(seg3, nextNorm, abbrDict) : seg3;
+              const expSeg3Words = normalizeText(expSeg3).split(/\s+/).filter(Boolean);
+              const s3 = Math.max(
+                scoreSegment(seg3Words, nextNorm, nextWords),
+                scoreSegment(expSeg3Words, nextNorm, nextWords)
+              );
               if (s3 > bestSeg3Score) {
                 bestSeg3Score = s3;
                 if (s3 >= 0.4) foundSeq3 = true;
@@ -1017,23 +1005,11 @@ export function runLinkingParser(
         }
       }
 
-      // Bug #5 FIX (per request): previously, if no direct match was found for this line, the code
-      // silently fell back to inheriting the previous line's source/context, marking isInherited=true.
-      // This masked genuine "no source found" cases behind a (likely wrong) inherited link instead of
-      // surfacing them as unlinked. A line that fails to match on its own must now be reported as
-      // unlinked ("ללא מקור מקושר") rather than silently inheriting the previous line's link.
-      // (Explicit "שם"/"בא"ד" inheritance above is unaffected — that's a deliberate instruction in the
-      // text itself, not a failure fallback.)
-
-      // Fallback inheritance: if no direct match was found for this line, silently inherit the
-      // previous line's source/context. Only applies when this is not an explicit secondary citation.
-      // NOTE: this is intentionally limited the same way explicit "שם" inheritance is limited above —
-      // see the `else` branch further below, which resets previousLink to null whenever a line ends up
-      // with NO link at all (not even via this fallback). That way, if line 5 fails to find a direct
-      // match AND has no previousLink to inherit from (so this fallback itself can't fire), line 6
-      // will NOT reach past line 5 to inherit from line 4 — the "no source" state propagates forward
-      // instead of being silently skipped.
-      if (!matchedSourceLineNum && !explicitSecondaryTarget && !isExplicitlyRoutedLine && previousLink && previousLink.line_index_2) {
+      // If no direct match found, check fallback inheritance from previous link under same header.
+      // Only inherit when this is not an explicit citation to a source (primary or secondary) —
+      // if the line explicitly named its target (רש"י / תוספות / גמרא / משנה) and the search for
+      // that target failed, we must NOT silently paper over it with an unrelated previous link.
+      if (!matchedSourceLineNum && !explicitSecondaryTarget && !explicitPrimaryTarget && previousLink && previousLink.line_index_2) {
         matchedSourceLineNum = previousLink.line_index_2;
         matchedSecondaryLineNum = previousLink.secondary_line_index || null;
         targetSecondary = previousLink.secondaryTarget || null;
@@ -1115,14 +1091,10 @@ export function runLinkingParser(
         previousLink = newLink;
         previousSecondaryType = targetSecondary;
       } else {
-        // Bug #5 FIX (clarified): a line that found NO link at all — not even via inheritance —
-        // must also clear previousLink for the NEXT line. Otherwise a later line that itself
-        // needs to inherit (e.g. 'שם'/'בא"ד') would skip over this unlinked line and reach back
-        // to the last successfully-linked line, effectively resurrecting the exact silent-inheritance
-        // behavior we just removed, just one line later. The "no source found" state must propagate
-        // forward until a real match (direct or explicit) is found again.
+        // Rule: a content line that ends up with NO link at all breaks the inheritance chain.
+        // Without this, a later line (e.g. line 6) could silently inherit a link from an
+        // earlier line (e.g. line 4) by skipping over a linkless line (e.g. line 5) in between.
         previousLink = null;
-        previousSecondaryType = null;
       }
 
       // Calculate initial DH word highlight range (words count)
