@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Save, FolderOpen, Download, ArrowLeftRight, RotateCcw, ListTree, Filter, Menu } from 'lucide-react';
 import JSZip from 'jszip';
 import { SessionState } from '../types';
-import { formatLineWithDH, parseDocumentSegments, normalizeText } from '../utils/parserAlgorithm';
+import { formatLineWithDH, parseDocumentSegments, normalizeText, areHeadersMatching, isHeaderLine } from '../utils/parserAlgorithm';
 import { getWordSimilarity } from '../utils/fuzzyUtils';
 import { calculateDocumentIdfWeights, getCombinedWordWeight } from '../utils/wordWeights';
 import { notifySuccess, notifyError } from '../utils/otzariaBridge';
@@ -170,6 +170,53 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
       // Join strictly with physical newlines (\n) - NO <br> tags!
       const txtContent = updatedLines.join('\n');
       zip.file(`${cleanFileName}.txt`, txtContent);
+
+      // 4. Generate unlinked lines folder
+      const linkedLineIndices = new Set(session.links.map(l => l.line_index_1));
+      
+      const commDoc = parseDocumentSegments(session.commentaryLines.join('\n'));
+      const srcDoc = parseDocumentSegments(session.sourceLines.join('\n'));
+      const rashiDoc = session.rashiLines ? parseDocumentSegments(session.rashiLines.join('\n')) : null;
+      const tosafotDoc = session.tosafotLines ? parseDocumentSegments(session.tosafotLines.join('\n')) : null;
+      
+      const unlinkedFolder = zip.folder("שורות_ללא_קישור");
+      
+      if (unlinkedFolder) {
+        commDoc.segments.forEach(commSeg => {
+          const srcSeg = srcDoc.segments.find(s => areHeadersMatching(commSeg.headerTitle, s.headerTitle));
+          const rashiSeg = rashiDoc ? rashiDoc.segments.find(s => areHeadersMatching(commSeg.headerTitle, s.headerTitle)) : null;
+          const tosafotSeg = tosafotDoc ? tosafotDoc.segments.find(s => areHeadersMatching(commSeg.headerTitle, s.headerTitle)) : null;
+          
+          for (let i = commSeg.startLine; i <= commSeg.endLine; i++) {
+            if (i > session.commentaryLines.length) break;
+            const line = session.commentaryLines[i - 1];
+            if (!line || !line.trim() || isHeaderLine(line)) continue;
+            
+            if (!linkedLineIndices.has(i)) {
+              let content = `שורה מפרש ללא קישור (שורה ${i}):\n${line}\n\n`;
+              content += `כותרת: ${commSeg.headerTitle}\n\n`;
+              
+              if (srcSeg) {
+                content += `--- מקור ---\n`;
+                content += session.sourceLines.slice(srcSeg.startLine - 1, srcSeg.endLine).join('\n') + '\n\n';
+              }
+              
+              if (rashiSeg && session.rashiLines) {
+                content += `--- רש"י ---\n`;
+                content += session.rashiLines.slice(rashiSeg.startLine - 1, rashiSeg.endLine).join('\n') + '\n\n';
+              }
+              
+              if (tosafotSeg && session.tosafotLines) {
+                content += `--- תוספות ---\n`;
+                content += session.tosafotLines.slice(tosafotSeg.startLine - 1, tosafotSeg.endLine).join('\n') + '\n\n';
+              }
+              
+              const safeHeaderTitle = commSeg.headerTitle.replace(/[/\\?%*:|"<>]/g, '_').substring(0, 30).trim();
+              unlinkedFolder.file(`${safeHeaderTitle}_שורה_${i}.txt`, content);
+            }
+          }
+        });
+      }
 
       // Generate ZIP blob and download
       const blob = await zip.generateAsync({ type: 'blob' });
