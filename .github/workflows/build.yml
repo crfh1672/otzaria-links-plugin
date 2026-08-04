@@ -3,7 +3,7 @@ name: Build Single File Plugin
 on:
   push:
     branches:
-      - main
+      - '**'
   workflow_dispatch:
 
 jobs:
