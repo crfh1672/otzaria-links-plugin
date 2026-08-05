@@ -11,21 +11,127 @@ declare global {
   }
 }
 
-export const isOtzariaAvailable = (): boolean => {
-  return typeof window !== 'undefined' && typeof window.Otzaria !== 'undefined' && typeof window.Otzaria.call === 'function';
+export const isOtzariaPresent = (): boolean => {
+  return typeof window !== 'undefined' && typeof window.Otzaria !== 'undefined';
 };
 
+export const isOtzariaAvailable = (): boolean => {
+  return isOtzariaPresent() && typeof window.Otzaria!.call === 'function';
+};
+
+export async function waitForOtzariaReady(timeoutMs = 3000): Promise<boolean> {
+  if (isOtzariaAvailable()) return true;
+  if (!isOtzariaPresent()) return false;
+
+  return new Promise(resolve => {
+    const start = Date.now();
+    const interval = window.setInterval(() => {
+      if (isOtzariaAvailable()) {
+        window.clearInterval(interval);
+        resolve(true);
+      } else if (Date.now() - start >= timeoutMs) {
+        window.clearInterval(interval);
+        resolve(false);
+      }
+    }, 200);
+  });
+}
+
+export async function waitForPluginBoot(timeoutMs = 5000): Promise<boolean> {
+  if (typeof window === 'undefined' || !window.Otzaria?.on) return false;
+
+  return new Promise(resolve => {
+    const timer = window.setTimeout(() => {
+      window.Otzaria?.off?.('plugin.boot', onBoot);
+      resolve(false);
+    }, timeoutMs);
+
+    const onBoot = () => {
+      window.clearTimeout(timer);
+      window.Otzaria?.off?.('plugin.boot', onBoot);
+      resolve(true);
+    };
+
+    window.Otzaria.on('plugin.boot', onBoot);
+  });
+}
+
+function isBookMetaArray(data: any): data is Array<{ bookId: string; title: string; path?: string; type?: string }> {
+  return Array.isArray(data) && data.length > 0 && data.every(item => item && typeof item.bookId === 'string' && typeof item.title === 'string');
+}
+
+function normalizeBookMeta(raw: any): { bookId: string; title: string; path: string; type: string } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const bookId = typeof raw.bookId === 'string' ? raw.bookId : typeof raw.id === 'string' ? raw.id : null;
+  const title = typeof raw.title === 'string' ? raw.title : typeof raw.name === 'string' ? raw.name : null;
+  if (!bookId || !title) return null;
+  return {
+    bookId,
+    title,
+    path: typeof raw.path === 'string' ? raw.path : '',
+    type: typeof raw.type === 'string' ? raw.type : 'text'
+  };
+}
+
+async function fetchLibraryBooks(query: string): Promise<Array<{ bookId: string; title: string; path: string; type: string }> | null> {
+  if (!isOtzariaAvailable()) return null;
+  try {
+    const res = await window.Otzaria!.call('library.findBooks', { query });
+    if (res && res.success && Array.isArray(res.data)) {
+      const books = res.data
+        .map(normalizeBookMeta)
+        .filter((item): item is { bookId: string; title: string; path: string; type: string } => item !== null);
+      return books.length > 0 ? books : null;
+    }
+  } catch (e) {
+    console.warn(`Otzaria findBooks failed for query='${query}'`, e);
+  }
+  return null;
+}
+
+async function fetchLibraryBookList(): Promise<BookNode | null> {
+  const queries = ['', 'א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ז', 'ח', 'ט', 'י', 'כ', 'ל', 'מ', 'נ', 'ס', 'ע', 'פ', 'צ', 'ק', 'ר', 'ש', 'ת'];
+  const bookMap: Record<string, { bookId: string; title: string; path: string; type: string }> = {};
+
+  for (const query of queries) {
+    const books = await fetchLibraryBooks(query);
+    if (!books) continue;
+    for (const book of books) {
+      bookMap[book.bookId] = book;
+    }
+    if (Object.keys(bookMap).length > 200) {
+      break;
+    }
+  }
+
+  const allBooks = Object.values(bookMap);
+  if (allBooks.length === 0) return null;
+  return {
+    title: 'ספריית אוצריא',
+    path: '',
+    categories: [],
+    books: allBooks
+  };
+}
+
 export async function fetchLibraryTree(): Promise<BookNode> {
-  if (isOtzariaAvailable()) {
+  if (await waitForOtzariaReady()) {
+    await waitForPluginBoot(3000);
     try {
       const res = await window.Otzaria!.call('library.getTree', { includeBooks: true });
       if (res && res.success && res.data) {
         return res.data;
       }
     } catch (e) {
-      console.warn('Otzaria getTree failed, fallback to mock tree', e);
+      console.warn('Otzaria getTree failed, attempting supported fallback', e);
+    }
+
+    const listTree = await fetchLibraryBookList();
+    if (listTree) {
+      return listTree;
     }
   }
+
   return MOCK_LIBRARY_TREE;
 }
 

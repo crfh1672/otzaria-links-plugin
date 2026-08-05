@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DEFAULT_ABBREVIATIONS } from '../data/abbreviations';
 import { X, Search, Plus, Trash2, Upload, Download, RefreshCw, Check, BookOpen, FileCode } from 'lucide-react';
 
 interface AbbreviationsModalProps {
   customDict?: Record<string, string[]>;
-  onSaveDict: (dict: Record<string, string[]>) => void;
+  onSaveDict: (dict: Record<string, string[]> | undefined) => void;
   onClose: () => void;
 }
 
@@ -17,6 +17,10 @@ export const AbbreviationsModal: React.FC<AbbreviationsModalProps> = ({
     customDict || DEFAULT_ABBREVIATIONS
   );
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    setDict(customDict || DEFAULT_ABBREVIATIONS);
+  }, [customDict]);
   const [editingAbbr, setEditingAbbr] = useState<string | null>(null);
   const [newOptionInput, setNewOptionInput] = useState('');
 
@@ -91,7 +95,6 @@ export const AbbreviationsModal: React.FC<AbbreviationsModalProps> = ({
 
   const handleSaveAndClose = () => {
     if (dict === DEFAULT_ABBREVIATIONS) {
-      // @ts-ignore
       onSaveDict(undefined);
     } else {
       onSaveDict(dict);

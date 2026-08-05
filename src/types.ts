@@ -29,7 +29,7 @@ export interface OtzariaLink {
   status?: 'approved' | 'pending'; // Approval state for link review
 
   // Pre-calculated visual match range in target source line
-  matchRange?: { wordStart: number; wordCount: number };
+  matchRange?: DHHighlight;
 
   // Top-K alternative candidates (up to 3, sorted best-first).
   // candidates[0] mirrors line_index_2 (the selected candidate).
@@ -46,6 +46,8 @@ export interface PluginConfig {
   diburHamatchilDelimiter?: string; // "תו סיום דיבור המתחיל" (e.g. '.' or '.:')
   useAbbreviationExpansion?: boolean; // "תמיכה בפענוח ראשי תיבות"
   customAbbreviations?: Record<string, string[]>; // מילון ראשי תיבות מותאם אישית
+  gsAbbreviations?: Record<string, string[]>; // מילון ראשי תיבות טעון מ-GS
+  gsReplacements?: Record<string, string[]>; // החלפות מותאמות מ-GS
   useFuzzyMatching?: boolean; // "השוואה גמישה קלה (Fuzzy Matching)"
   useWordWeighting?: boolean; // "שקילת מילים וסינון מילות יחס (Word Weighting)"
 }
@@ -53,6 +55,14 @@ export interface PluginConfig {
 export interface DHHighlight {
   wordStart: number;
   wordCount: number;
+  /**
+   * Optional disjoint match clusters within the [wordStart, wordStart+wordCount) span.
+   * When present, renderers should highlight each segment separately instead of the
+   * single wordStart/wordCount span, which may bridge over unmatched words sitting
+   * between clusters. Absent for backward compatibility with older sessions/consumers
+   * that only read wordStart/wordCount (that pair still reflects the outer bounding span).
+   */
+  segments?: { wordStart: number; wordCount: number }[];
 }
 
 export interface SessionState {

@@ -1,9 +1,5 @@
-import { DEFAULT_REPLACEMENTS } from './replacements';
-
-/**
- * Default dictionary of Hebrew/Rabbinic Rashei Teivot (abbreviations) and their possible expansions.
- */
-export const DEFAULT_ABBREVIATIONS: Record<string, string[]> = {
+{
+  "abbreviations": {
     "א\"א": [
       "אי אפשר",
       "אמר אברהם",
@@ -55274,242 +55270,81 @@ export const DEFAULT_ABBREVIATIONS: Record<string, string[]> = {
       "אלף מאה שבעים ושניים",
       "אלף מאה שבעים ושתיים"
     ]
-};
-
-/**
- * Normalizes abbreviation string key for resilient lookup (removing quotes, cantillation, etc.)
- */
-export function cleanAbbrKey(key: string): string {
-  return key
-    .replace(/[\u0591-\u05C7]/g, '') // remove nikud/teamim
-    .replace(/[״"׳’‘´']/g, '')       // remove quotes
-    .trim();
-}
-
-/**
- * Map indexed by normalized abbreviation keys (e.g. "אא" -> options)
- */
-export const NORMALIZED_ABBREVIATIONS_MAP: Record<string, string[]> = {};
-
-// Populate map with abbreviations
-Object.entries(DEFAULT_ABBREVIATIONS).forEach(([rawKey, options]) => {
-  const cleanedKey = cleanAbbrKey(rawKey);
-  if (!NORMALIZED_ABBREVIATIONS_MAP[cleanedKey]) {
-    NORMALIZED_ABBREVIATIONS_MAP[cleanedKey] = options;
-  } else {
-    // Merge options without duplicates
-    const combined = new Set([...NORMALIZED_ABBREVIATIONS_MAP[cleanedKey], ...options]);
-    NORMALIZED_ABBREVIATIONS_MAP[cleanedKey] = Array.from(combined);
+  },
+  "replacements": {
+    "קמשמע": [
+      "קא משמע"
+    ],
+    "קא משמע": [
+      "קמשמע"
+    ],
+    "ר'": [
+      "רבי",
+      "רב",
+      "רבן",
+      "רבנו"
+    ],
+    "רב": [
+      "ר'",
+      "רבי",
+      "רבן",
+      "רבנו"
+    ],
+    "רבי": [
+      "ר'",
+      "רב",
+      "רבן",
+      "רבנו"
+    ],
+    "רבן": [
+      "ר'",
+      "רב",
+      "רבי",
+      "רבנו"
+    ],
+    "רבנו": [
+      "ר'",
+      "רב",
+      "רבי",
+      "רבן"
+    ],
+    "האי": [
+      "ההוא"
+    ],
+    "ההוא": [
+      "האי"
+    ],
+    "בעי": [
+      "בעא"
+    ],
+    "בעא": [
+      "בעי"
+    ],
+    "אחי": [
+      "אחאי"
+    ],
+    "אחאי": [
+      "אחי"
+    ],
+    "קא מיבעי": [
+      "קמיבעי",
+      "קא מיבעיא",
+      "קמיבעיא"
+    ],
+    "קא מיבעיא": [
+      "קא מיבעי",
+      "קמיבעי",
+      "קמיבעיא"
+    ],
+    "קמיבעי": [
+      "קא מיבעי",
+      "קא מיבעיא",
+      "קמיבעיא"
+    ],
+    "קמיבעיא": [
+      "קא מיבעי",
+      "קא מיבעיא",
+      "קמיבעי"
+    ]
   }
-
-  // Also store exact raw key if different
-  if (rawKey !== cleanedKey) {
-    NORMALIZED_ABBREVIATIONS_MAP[rawKey] = options;
-  }
-});
-
-// Populate map with replacements
-Object.entries(DEFAULT_REPLACEMENTS).forEach(([rawKey, options]) => {
-  const cleanedKey = cleanAbbrKey(rawKey);
-  if (!NORMALIZED_ABBREVIATIONS_MAP[cleanedKey]) {
-    NORMALIZED_ABBREVIATIONS_MAP[cleanedKey] = options;
-  } else {
-    // Merge options without duplicates
-    const combined = new Set([...NORMALIZED_ABBREVIATIONS_MAP[cleanedKey], ...options]);
-    NORMALIZED_ABBREVIATIONS_MAP[cleanedKey] = Array.from(combined);
-  }
-
-  // Also store exact raw key if different
-  if (rawKey !== cleanedKey) {
-    NORMALIZED_ABBREVIATIONS_MAP[rawKey] = options;
-  }
-});
-
-function getInitialLettersFromAbbr(abbr: string): string[] {
-  return cleanAbbrKey(abbr)
-    .replace(/\s+/g, '')
-    .split('')
-    .filter(Boolean);
-}
-
-function findPhraseByInitials(targetText: string, initials: string[]): string | null {
-  if (initials.length === 0) return null;
-
-  const normalizedWords = targetText
-    .replace(/[.,:;?!()\[\]"'׳״’‘´]/g, ' ')
-    .split(/\s+/)
-    .map(word => cleanAbbrKey(word))
-    .filter(Boolean);
-
-  for (let i = 0; i + initials.length <= normalizedWords.length; i++) {
-    const slice = normalizedWords.slice(i, i + initials.length);
-    let matches = true;
-    for (let j = 0; j < initials.length; j++) {
-      if (!slice[j].startsWith(initials[j])) {
-        matches = false;
-        break;
-      }
-    }
-    if (matches) {
-      return normalizedWords.slice(i, i + initials.length).join(' ');
-    }
-  }
-
-  return null;
-}
-
-/**
- * Searches for potential abbreviation expansions that match words in the target text.
- * Replaces abbreviations in `sourceText` with the matching option found in `targetContext`.
- */
-export function buildNormalizedAbbreviationsMap(dict: Record<string, string[]>): Record<string, string[]> {
-  const normalizedMap: Record<string, string[]> = {};
-
-  Object.entries(dict).forEach(([rawKey, options]) => {
-    const cleanedKey = cleanAbbrKey(rawKey);
-    if (!cleanedKey) return;
-
-    if (!normalizedMap[cleanedKey]) {
-      normalizedMap[cleanedKey] = options;
-    } else {
-      normalizedMap[cleanedKey] = Array.from(new Set([...normalizedMap[cleanedKey], ...options]));
-    }
-
-    if (rawKey !== cleanedKey) {
-      if (!normalizedMap[rawKey]) {
-        normalizedMap[rawKey] = options;
-      } else {
-        normalizedMap[rawKey] = Array.from(new Set([...normalizedMap[rawKey], ...options]));
-      }
-    }
-  });
-
-  return normalizedMap;
-}
-
-export function buildNormalizedAbbreviationsMapWithReplacements(
-  dict: Record<string, string[]>,
-  additionalReplacements?: Record<string, string[]>
-): Record<string, string[]> {
-  const normalizedMap = buildNormalizedAbbreviationsMap(dict);
-  const replacementDict = {
-    ...DEFAULT_REPLACEMENTS,
-    ...(additionalReplacements || {})
-  };
-
-  Object.entries(replacementDict).forEach(([rawKey, options]) => {
-    const cleanedKey = cleanAbbrKey(rawKey);
-    if (!cleanedKey) return;
-
-    if (!normalizedMap[cleanedKey]) {
-      normalizedMap[cleanedKey] = options;
-    } else {
-      normalizedMap[cleanedKey] = Array.from(new Set([...normalizedMap[cleanedKey], ...options]));
-    }
-
-    if (rawKey !== cleanedKey) {
-      if (!normalizedMap[rawKey]) {
-        normalizedMap[rawKey] = options;
-      } else {
-        normalizedMap[rawKey] = Array.from(new Set([...normalizedMap[rawKey], ...options]));
-      }
-    }
-  });
-
-  return normalizedMap;
-}
-
-export function expandAbbreviationsInText(
-  sourceText: string,
-  targetContext: string,
-  customDict?: Record<string, string[]>,
-  customReplacements?: Record<string, string[]>
-): string {
-  if (!sourceText || !sourceText.trim() || !targetContext || !targetContext.trim()) {
-    return sourceText;
-  }
-
-  const dict = customDict || DEFAULT_ABBREVIATIONS;
-  const normalizedSourceMap = (dict === DEFAULT_ABBREVIATIONS && !customReplacements)
-    ? NORMALIZED_ABBREVIATIONS_MAP
-    : buildNormalizedAbbreviationsMapWithReplacements(dict, customReplacements);
-  const targetNorm = targetContext.replace(/[\u0591-\u05C7]/g, '');
-
-  // Split sourceText into words/tokens
-  const words = sourceText.split(/(\s+)/);
-
-  const nonWsIndices: number[] = [];
-  for (let i = 0; i < words.length; i++) {
-    if (words[i].trim() !== '') {
-      nonWsIndices.push(i);
-    }
-  }
-
-  for (let idx = 0; idx < nonWsIndices.length; idx++) {
-    // Try Trigram (3), then Bigram (2), then Single (1)
-    for (let len = 3; len >= 1; len--) {
-      const endIdx = idx + len - 1;
-      if (endIdx >= nonWsIndices.length) continue;
-
-      const iStart = nonWsIndices[idx];
-      const iEnd = nonWsIndices[endIdx];
-      const sliceWords = words.slice(iStart, iEnd + 1);
-      const rawJoined = sliceWords.join('');
-      const cleanedJoined = cleanAbbrKey(rawJoined);
-      const noSpaceJoined = cleanedJoined.replace(/\s+/g, '');
-      const spaceJoined = sliceWords.map(w => cleanAbbrKey(w)).join(' ');
-      const rawNoSpace = rawJoined.replace(/\s+/g, '').replace(/[״"׳’‘´']/g, '');
-
-      const lookupKeys = [
-        rawJoined,
-        cleanedJoined,
-        noSpaceJoined,
-        spaceJoined,
-        rawNoSpace
-      ];
-
-      let options: string[] | undefined;
-      for (const k of lookupKeys) {
-        if (!k) continue;
-        options = dict[k] || NORMALIZED_ABBREVIATIONS_MAP[k];
-        if (options && options.length > 0) break;
-      }
-
-      if (options && options.length > 0) {
-        let matchedOption: string | null = null;
-        for (const opt of options) {
-          const optNorm = opt.replace(/[\u0591-\u05C7]/g, '');
-          if (targetNorm.includes(optNorm)) {
-            matchedOption = opt;
-            break;
-          }
-        }
-
-        if (matchedOption) {
-          words[iStart] = matchedOption;
-          for (let k = iStart + 1; k <= iEnd; k++) {
-            words[k] = '';
-          }
-          idx = endIdx; // advance past consumed tokens
-          break;
-        }
-      }
-
-      // Fallback: if no dictionary expansion exists, try matching by initials.
-      const abbreviationLetters = getInitialLettersFromAbbr(rawJoined);
-      if (!options && abbreviationLetters.length > 1) {
-        const initialsMatch = findPhraseByInitials(targetNorm, abbreviationLetters);
-        if (initialsMatch) {
-          words[iStart] = initialsMatch;
-          for (let k = iStart + 1; k <= iEnd; k++) {
-            words[k] = '';
-          }
-          idx = endIdx; // advance past consumed tokens
-          break;
-        }
-      }
-    }
-  }
-
-  return words.join('');
 }
