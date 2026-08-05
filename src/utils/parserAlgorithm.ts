@@ -11,22 +11,36 @@ export function calculateLinkConfidence(
   matchScore: number,
   wordLength: number,
   isExplicit: boolean,
-  expectedWeight?: number
+  expectedWeight?: number,
+  matchedWordCount?: number
 ): number {
   if (isInherited) {
     return 75; // Inherited context / שם / בא"ד
   }
+
+  // Short-match confidence dampening: based on matchedWordCount — how many words were
+  // ACTUALLY found matching contiguously during the search — not on DH/line length.
+  // A short line can hold a long, well-matched citation, and a long line can yield only
+  // a couple of genuinely matched words; matchedWordCount reflects the real evidence found,
+  // so cap confidence when it's very low, forcing 'pending' for human review.
+  const SHORT_MATCH_WORD_THRESHOLD = 2;
+  const SHORT_MATCH_CONFIDENCE_CAP = 70;
+  const isShortMatch = matchedWordCount !== undefined && matchedWordCount > 0 && matchedWordCount <= SHORT_MATCH_WORD_THRESHOLD;
+
   const denominator = expectedWeight && expectedWeight > 0 ? expectedWeight : wordLength;
   if (isExplicit && matchScore >= denominator + 3) {
-    return 98; // Explicit dibur hamatchil exact delimiter match
+    return isShortMatch ? SHORT_MATCH_CONFIDENCE_CAP : 98; // Explicit dibur hamatchil exact delimiter match
   }
   if (denominator <= 0) return 70;
 
   const ratio = matchScore / denominator;
-  if (ratio >= 0.90) return 96;
-  if (ratio >= 0.75) return 88;
-  if (ratio >= 0.55) return 76;
-  return 60;
+  let confidence: number;
+  if (ratio >= 0.90) confidence = 96;
+  else if (ratio >= 0.75) confidence = 88;
+  else if (ratio >= 0.55) confidence = 76;
+  else confidence = 60;
+
+  return isShortMatch ? Math.min(confidence, SHORT_MATCH_CONFIDENCE_CAP) : confidence;
 }
 
 /**
@@ -296,7 +310,8 @@ export function parseDocumentSegments(rawText: string): { lines: string[]; segme
  */
 export function extractDiburHamatchil(
   line: string,
-  delimiter?: string
+  delimiter?: string,
+  maxWords: number = 12
 ): { dhText: string; cleanDh: string; isExplicitDelimiter: boolean } {
   const cleanLine = stripHtmlTags(line);
   const normLine = normalizeText(cleanLine, true);
@@ -323,11 +338,11 @@ export function extractDiburHamatchil(
     explicit = false;
   }
 
-  // Limit DH to a maximum of 12 words to avoid over-matching on long commentary lines
-  const MAX_DH_WORDS = 12;
+  // Limit DH to a maximum number of words to avoid over-matching on long commentary lines.
+  // Callers pass a smaller maxWords for Tosafot (e.g. 7) and the default (12) for other sources.
   const dhWords = dhPart.trim().split(/\s+/).filter(Boolean);
-  if (dhWords.length > MAX_DH_WORDS) {
-    dhPart = dhWords.slice(0, MAX_DH_WORDS).join(' ');
+  if (dhWords.length > maxWords) {
+    dhPart = dhWords.slice(0, maxWords).join(' ');
   }
 
   const cleanDh = normalizeText(dhPart);
@@ -404,7 +419,8 @@ export function runLinkingParser(
     idfMap?: Record<string, number>,
     prevLineNum?: number | null,
     requireStartAtFirstWord: boolean = false,
-    lineCache?: LineCacheEntry[]
+    lineCache?: LineCacheEntry[],
+    maxDhWords: number = 12
   ): { lineNum: number | null; matchedCount: number; matchedWordCount: number; expectedWeight: number; topK: {lineNum: number; score: number}[] } => {
     if (!docLines || docLines.length === 0) {
       return { lineNum: null, matchedCount: 0, matchedWordCount: 0, expectedWeight: 0, topK: [] };
@@ -416,7 +432,7 @@ export function runLinkingParser(
     const segments = fullLineText.split(/(?:^|\s)ו?כו'(?:\s|$|[.,:;])/i).map(s => s.trim()).filter(Boolean);
     if (segments.length <= 1) {
       const cleanDh = normalizeText(fullLineText);
-      return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum, requireStartAtFirstWord, lineCache);
+      return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum, requireStartAtFirstWord, lineCache, maxDhWords);
     }
 
     const seg1 = segments[0];
@@ -552,7 +568,7 @@ export function runLinkingParser(
     }
 
     const cleanDh = normalizeText(fullLineText);
-    return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum, requireStartAtFirstWord, lineCache);
+    return searchLineInDoc(docLines, validStart, validEnd, cleanDh, fullLineText, true, idfMap, prevLineNum, requireStartAtFirstWord, lineCache, maxDhWords);
   };
 
   // Primary search function: matches phrase or finds longest contiguous matching prefix from commentary line
@@ -566,7 +582,8 @@ export function runLinkingParser(
     idfMap?: Record<string, number>,
     prevLineNum?: number | null,
     requireStartAtFirstWord: boolean = false,
-    lineCache?: LineCacheEntry[]
+    lineCache?: LineCacheEntry[],
+    maxDhWords: number = 12
   ): { lineNum: number | null; matchedCount: number; matchedWordCount: number; expectedWeight: number; topK: {lineNum: number; score: number}[] } => {
     if (!docLines || docLines.length === 0) {
       if (DEBUG) console.log(`    ⚠️ searchLineInDoc: docLines is empty!`);
@@ -588,11 +605,24 @@ export function runLinkingParser(
 
     if (DEBUG) console.log(`    📊 searchLineInDoc: validStart=${validStart}, validEnd=${validEnd}, prevLineNum=${prevLineNum ?? 'none'}, searchWords=[${searchWords.join(',')}], fullWords=[${fullWords.join(',')}], isExplicit=${isExplicit}, expectedWeight=${expectedWeight.toFixed(2)}, requireStartAtFirstWord=${requireStartAtFirstWord}`);
 
-    const searchRanges = [
-      { s: validStart, e: validEnd }
-    ];
+    // Phased search: when we have a reliable anchor (prevLineNum), search a narrow window
+    // around it first, and only fall back to scanning the full [validStart, validEnd] range
+    // if nothing acceptable turned up nearby. This matters most for short DH quotes, where a
+    // 1-2 word phrase can coincidentally match many places across a wide range — searching
+    // near the anchor first lets the correct nearby line win before the wide scan ever runs.
+    const PHASED_SEARCH_WINDOW = 12;
+    const searchRanges: { s: number; e: number }[] = [];
+    if (prevLineNum !== null && prevLineNum !== undefined && prevLineNum > 0) {
+      const narrowStart = Math.max(validStart, prevLineNum - PHASED_SEARCH_WINDOW);
+      const narrowEnd = Math.min(validEnd, prevLineNum + PHASED_SEARCH_WINDOW);
+      if (narrowStart <= narrowEnd && (narrowStart > validStart || narrowEnd < validEnd)) {
+        searchRanges.push({ s: narrowStart, e: narrowEnd });
+      }
+    }
+    searchRanges.push({ s: validStart, e: validEnd });
 
     for (const range of searchRanges) {
+      if (DEBUG) console.log(`    🔍 searchLineInDoc phase: scanning lines ${range.s}-${range.e}`);
       let bestLine: number | null = null;
       let maxMatchedCount = 0;
       let bestMatchedWordCount = 0;
@@ -645,9 +675,8 @@ export function runLinkingParser(
         const calcContiguousScore = (sourceWords: string[], targetWords: string[]): { score: number; wordCount: number } => {
           // Only consider starting positions within the first 3 words of the commentary line
           const maxStartIdx = Math.min(3, sourceWords.length);
-          // Cap source to 12 words maximum
-          const MAX_DH_WORDS = 12;
-          const cappedSource = sourceWords.slice(0, MAX_DH_WORDS);
+          // Cap source to maxDhWords (7 for Tosafot, 12 for other sources by default)
+          const cappedSource = sourceWords.slice(0, maxDhWords);
           let maxSeqScore = 0;
           let bestWordCount = 0;
           for (let startWIdx = 0; startWIdx < maxStartIdx; startWIdx++) {
@@ -702,7 +731,7 @@ export function runLinkingParser(
           // No explicit delimiter: find longest contiguous sequence of matching words.
           // Constraint: the sequence must start within the first 3 words of the commentary
           // line to avoid false positives from incidental word matches deep in the line.
-          // Also caps sourceWords to MAX_DH_WORDS (12) to bound the search space.
+          // Also caps sourceWords to maxDhWords to bound the search space.
           const combos = [
             calcContiguousScore(fullWords, docWords),
             calcContiguousScore(expFullWords, expDocWords),
@@ -884,7 +913,9 @@ export function runLinkingParser(
       // For non-explicit lines, use lineForDh or fallback to trimmedLine
       const lineForDhExtraction = lineForDh.trim() ? lineForDh : trimmedLine;
       if (DEBUG) console.log(`  🔎 lineForDhExtraction='${lineForDhExtraction}'`);
-      const { dhText, cleanDh, isExplicitDelimiter } = extractDiburHamatchil(lineForDhExtraction, config.diburHamatchilDelimiter);
+      // Tosafot ד"ה is capped to 7 words; every other source (Rashi, Gemara, Mishna, etc.) keeps 12.
+      const maxDhWordsForTarget = targetSecondary === 'tosafot' ? 7 : 12;
+      const { dhText, cleanDh, isExplicitDelimiter } = extractDiburHamatchil(lineForDhExtraction, config.diburHamatchilDelimiter, maxDhWordsForTarget);
       if (DEBUG) console.log(`  📌 dhText='${dhText}', cleanDh='${cleanDh}', isExplicitDelimiter=${isExplicitDelimiter}`);
 
       let matchedSourceLineNum: number | null = null;
@@ -952,7 +983,8 @@ export function runLinkingParser(
             tosafotIdfMap,
             prevSecondaryLineNum,
             true,
-            tosafotLineCache
+            tosafotLineCache,
+            7
           );
         } else {
           secMatchRes = searchLineInDoc(
@@ -965,7 +997,8 @@ export function runLinkingParser(
             tosafotIdfMap,
             prevSecondaryLineNum,
             true,
-            tosafotLineCache
+            tosafotLineCache,
+            7
           );
         }
         if (DEBUG) console.log(`  → Tosafot search result: lineNum=${secMatchRes.lineNum}, matchedCount=${secMatchRes.matchedCount}`);
@@ -1093,7 +1126,8 @@ export function runLinkingParser(
         const matchScore = Math.max(srcMatchRes.matchedCount, secMatchRes.matchedCount);
         const expWeight = Math.max(srcMatchRes.expectedWeight, secMatchRes.expectedWeight);
         const wordLength = (cleanDh || lineForDhExtraction).split(/\s+/).filter(Boolean).length;
-        const confidence = calculateLinkConfidence(Boolean(isInherited), matchScore, wordLength, isExplicitDelimiter, expWeight);
+        const matchedWordCountForConfidence = Math.max(srcMatchRes.matchedWordCount, secMatchRes.matchedWordCount);
+        const confidence = calculateLinkConfidence(Boolean(isInherited), matchScore, wordLength, isExplicitDelimiter, expWeight, matchedWordCountForConfidence);
         const status: 'approved' | 'pending' = confidence >= 85 ? 'approved' : 'pending';
 
         // Build Top-K candidates list from whichever source produced the match.
@@ -1107,7 +1141,7 @@ export function runLinkingParser(
         const linkCandidates: import('../types').LinkCandidate[] = rawTopK.map(c => ({
           lineNum: c.lineNum,
           score: c.score,
-          confidence: calculateLinkConfidence(false, c.score, wordLength, isExplicitDelimiter, expWeight)
+          confidence: calculateLinkConfidence(false, c.score, wordLength, isExplicitDelimiter, expWeight, matchedWordCountForConfidence)
         }));
 
         const targetDocLines = isSecondaryLink
@@ -1242,18 +1276,41 @@ export function findSourceMatchRange(sourceLine: string, dhText: string): DHHigh
 
   if (matchedIndices.length === 0) return null;
 
-  // Sort and find boundaries
+  // Sort and de-dupe (two different DH words can independently map to the same target word)
   matchedIndices.sort((a, b) => a - b);
-  const minIdx = matchedIndices[0];
-  const maxIdx = matchedIndices[matchedIndices.length - 1];
-  const count = maxIdx - minIdx + 1;
+  const uniqueIndices = matchedIndices.filter((idx, i) => i === 0 || idx !== matchedIndices[i - 1]);
 
-  // Safeguard: If matches are too sparse across a massive line, keep it to the first cluster
-  if (count > sourceWords.length + 5 && matchedIndices.length < sourceWords.length / 2) {
-    return { wordStart: matchedIndices[0], wordCount: 1 };
+  // Group into segments of consecutive target-word indices. An unmatched word sitting
+  // between two matched clusters starts a new segment instead of being silently bridged
+  // into one continuous highlight.
+  const segments: { wordStart: number; wordCount: number }[] = [];
+  let segStart = uniqueIndices[0];
+  let segEnd = uniqueIndices[0];
+  for (let i = 1; i < uniqueIndices.length; i++) {
+    const idx = uniqueIndices[i];
+    if (idx === segEnd + 1) {
+      segEnd = idx;
+    } else {
+      segments.push({ wordStart: segStart, wordCount: segEnd - segStart + 1 });
+      segStart = idx;
+      segEnd = idx;
+    }
+  }
+  segments.push({ wordStart: segStart, wordCount: segEnd - segStart + 1 });
+
+  const minIdx = uniqueIndices[0];
+  const maxIdx = uniqueIndices[uniqueIndices.length - 1];
+  const totalSpan = maxIdx - minIdx + 1;
+
+  // Safeguard: if matches are extremely sparse across a massive line, the overall bounding
+  // span (wordStart/wordCount) is meaningless for legacy consumers that don't read `segments`
+  // — collapse it to just the first cluster. `segments` itself still lists every real matched
+  // cluster with no bridging, for consumers that do read it.
+  if (totalSpan > sourceWords.length + 5 && uniqueIndices.length < sourceWords.length / 2) {
+    return { wordStart: segments[0].wordStart, wordCount: segments[0].wordCount, segments };
   }
 
-  return { wordStart: minIdx, wordCount: count };
+  return { wordStart: minIdx, wordCount: totalSpan, segments };
 }
 
 export function formatLineWithDH(line: string, highlight?: DHHighlight, customId?: string, isSource?: boolean, forExport?: boolean): string {
@@ -1274,29 +1331,40 @@ export function formatLineWithDH(line: string, highlight?: DHHighlight, customId
 
     if (actualWords.length === 0) return line;
 
-    const startWord = Math.max(0, Math.min(highlight.wordStart, actualWords.length - 1));
-    const count = Math.max(1, highlight.wordCount);
-    const endWord = Math.min(actualWords.length, startWord + count);
+    // Use disjoint segments when available so an unmatched word sitting in a gap is
+    // never swept into the highlight; otherwise fall back to the single wordStart/wordCount
+    // span (older sessions / callers that predate segment support).
+    const rangesToHighlight = (highlight.segments && highlight.segments.length > 0)
+      ? highlight.segments
+      : [{ wordStart: highlight.wordStart, wordCount: highlight.wordCount }];
 
-    if (startWord >= actualWords.length || endWord <= 0) return line;
+    rangesToHighlight.forEach((seg, segIdx) => {
+      const startWord = Math.max(0, Math.min(seg.wordStart, actualWords.length - 1));
+      const count = Math.max(1, seg.wordCount);
+      const endWord = Math.min(actualWords.length, startWord + count);
 
-    const startArrIdx = actualWords[startWord]?.arrayIndex;
-    const endArrIdx = actualWords[Math.max(0, Math.min(actualWords.length - 1, endWord - 1))]?.arrayIndex;
+      if (startWord >= actualWords.length || endWord <= 0) return;
 
-    if (startArrIdx === undefined || endArrIdx === undefined) return line;
+      const startArrIdx = actualWords[startWord]?.arrayIndex;
+      const endArrIdx = actualWords[Math.max(0, Math.min(actualWords.length - 1, endWord - 1))]?.arrayIndex;
 
-    if (forExport) {
-      words[startArrIdx] = '<b>' + words[startArrIdx];
-      words[endArrIdx] = words[endArrIdx] + '</b>';
-    } else {
-      const spanId = customId ? ` id="${customId}"` : '';
-      const spanClass = isSource 
-        ? ` class="source-match-highlight bg-yellow-200/60 dark:bg-yellow-500/30 border border-gray-400 dark:border-gray-600 rounded px-0.5 mx-0.5"`
-        : ` class="dh-highlight font-bold bg-yellow-200/60 dark:bg-yellow-500/30 border border-gray-400 dark:border-gray-600 rounded px-0.5 mx-0.5"`;
+      if (startArrIdx === undefined || endArrIdx === undefined) return;
 
-      words[startArrIdx] = `<mark${spanId}${spanClass}>` + words[startArrIdx];
-      words[endArrIdx] = words[endArrIdx] + '</mark>';
-    }
+      if (forExport) {
+        words[startArrIdx] = '<b>' + words[startArrIdx];
+        words[endArrIdx] = words[endArrIdx] + '</b>';
+      } else {
+        // Only the first (earliest) segment carries the custom id, so a match split across
+        // multiple non-adjacent clusters doesn't produce duplicate DOM ids.
+        const spanId = (customId && segIdx === 0) ? ` id="${customId}"` : '';
+        const spanClass = isSource
+          ? ` class="source-match-highlight bg-yellow-200/60 dark:bg-yellow-500/30 border border-gray-400 dark:border-gray-600 rounded px-0.5 mx-0.5"`
+          : ` class="dh-highlight font-bold bg-yellow-200/60 dark:bg-yellow-500/30 border border-gray-400 dark:border-gray-600 rounded px-0.5 mx-0.5"`;
+
+        words[startArrIdx] = `<mark${spanId}${spanClass}>` + words[startArrIdx];
+        words[endArrIdx] = words[endArrIdx] + '</mark>';
+      }
+    });
 
     return words.join('');
   } catch (e) {
