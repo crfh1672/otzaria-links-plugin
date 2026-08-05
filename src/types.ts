@@ -46,8 +46,6 @@ export interface PluginConfig {
   diburHamatchilDelimiter?: string; // "תו סיום דיבור המתחיל" (e.g. '.' or '.:')
   useAbbreviationExpansion?: boolean; // "תמיכה בפענוח ראשי תיבות"
   customAbbreviations?: Record<string, string[]>; // מילון ראשי תיבות מותאם אישית
-  gsAbbreviations?: Record<string, string[]>; // מילון ראשי תיבות טעון מ-GS
-  gsReplacements?: Record<string, string[]>; // החלפות מותאמות מ-GS
   useFuzzyMatching?: boolean; // "השוואה גמישה קלה (Fuzzy Matching)"
   useWordWeighting?: boolean; // "שקילת מילים וסינון מילות יחס (Word Weighting)"
 }
