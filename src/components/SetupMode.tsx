@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BookNode, PluginConfig, TANAKH_BOOKS, SHAS_TRACTATES } from '../types';
-import { fetchLibraryTree, fetchBookContent, fetchBookLinks, notifyError } from '../utils/otzariaBridge';
+import { MOCK_LIBRARY_TREE } from '../data/otzariaLibraryMock';
+import { fetchLibraryTree, fetchBookContent, fetchBookLinks, notifyError, notifySuccess, saveToCache, getFromCache, removeFromCache } from '../utils/otzariaBridge';
+import { loadGsDictionary } from '../utils/gsDictionary';
 import { AbbreviationsModal } from './AbbreviationsModal';
 import { ToggleSwitch } from './ToggleSwitch';
 import {
@@ -53,12 +55,15 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
   // Config State
   const [category, setCategory] = useState<'tanakh' | 'shas'>('tanakh');
   const [targetBook, setTargetBook] = useState<string>(TANAKH_BOOKS[0]);
-  const [ignoreShamInShas, setIgnoreShamInShas] = useState<boolean>(false);
+  const [ignoreShamInShas, setIgnoreShamInShas] = useState<boolean>(true);
   const [delimiter, setDelimiter] = useState<string>('');
 
   // Rashei Teivot (Abbreviations) & Fuzzy Matching State
   const [useAbbreviationExpansion, setUseAbbreviationExpansion] = useState<boolean>(true);
   const [customAbbreviations, setCustomAbbreviations] = useState<Record<string, string[]> | undefined>(undefined);
+  const [gsAbbreviations, setGsAbbreviations] = useState<Record<string, string[]> | undefined>(undefined);
+  const [gsReplacements, setGsReplacements] = useState<Record<string, string[]> | undefined>(undefined);
+  const [gsSourceLoaded, setGsSourceLoaded] = useState<boolean>(false);
   const [showAbbrModal, setShowAbbrModal] = useState<boolean>(false);
   const [useFuzzyMatching, setUseFuzzyMatching] = useState<boolean>(true);
   const [useWordWeighting, setUseWordWeighting] = useState<boolean>(true);
@@ -77,6 +82,39 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
       }
     }
   }, [category]);
+
+  useEffect(() => {
+    const loadGs = async () => {
+      try {
+        const cachedCustomAbbreviations = await getFromCache<Record<string, string[]>>('customAbbreviations');
+        const cachedAbbreviations = await getFromCache<Record<string, string[]>>('gsAbbreviations');
+        const cachedReplacements = await getFromCache<Record<string, string[]>>('gsReplacements');
+        const gsDict = await loadGsDictionary();
+
+        if (cachedCustomAbbreviations) {
+          setCustomAbbreviations(cachedCustomAbbreviations);
+        }
+
+        if (cachedAbbreviations) {
+          setGsAbbreviations(cachedAbbreviations);
+        } else if (gsDict?.abbreviations) {
+          setGsAbbreviations(gsDict.abbreviations);
+        }
+
+        if (cachedReplacements) {
+          setGsReplacements(cachedReplacements);
+        } else if (gsDict?.replacements) {
+          setGsReplacements(gsDict.replacements);
+        }
+      } catch (err) {
+        console.warn('Failed to load GS dictionary:', err);
+      } finally {
+        setGsSourceLoaded(true);
+      }
+    };
+
+    loadGs();
+  }, []);
 
   const findBookInTreeRecursive = (node: BookNode, targetName: string, keyword: string, source: 'rashi' | 'tosafot'): string | null => {
     if (node.books) {
@@ -169,16 +207,59 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
     return { links: [] };
   };
 
-  // Load Library Tree on mount
+  // Load Library Tree on mount and retry when Otzaria becomes available or plugin.boot fires.
   useEffect(() => {
     let isMounted = true;
-    fetchLibraryTree().then(treeData => {
-      if (isMounted) {
-        setTree(treeData);
-        setLoadingTree(false);
+    let cleanupBootListener: (() => void) | null = null;
+    let retryCount = 0;
+    let currentTreeIsMock = true;
+
+    const loadTree = async () => {
+      const treeData = await fetchLibraryTree();
+      if (!isMounted) return;
+      setTree(treeData);
+      setLoadingTree(false);
+      currentTreeIsMock = treeData === MOCK_LIBRARY_TREE;
+    };
+
+    const attachBootListener = () => {
+      if (typeof window !== 'undefined' && window.Otzaria?.on) {
+        const onBoot = async () => {
+          if (!isMounted) return;
+          await loadTree();
+        };
+        window.Otzaria.on('plugin.boot', onBoot);
+        cleanupBootListener = () => window.Otzaria?.off?.('plugin.boot', onBoot);
+        return true;
       }
-    });
-    return () => { isMounted = false; };
+      return false;
+    };
+
+    attachBootListener();
+    loadTree();
+
+    const retryId = window.setInterval(() => {
+      retryCount += 1;
+      if (!isMounted || retryCount > 10) {
+        window.clearInterval(retryId);
+        return;
+      }
+
+      if (attachBootListener()) {
+        window.clearInterval(retryId);
+        return;
+      }
+
+      if (currentTreeIsMock) {
+        loadTree();
+      }
+    }, 1000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(retryId);
+      cleanupBootListener?.();
+    };
   }, []);
 
   const handleSelectBookFromTree = async (bookId: string, title: string) => {
@@ -209,6 +290,19 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
       }
     };
     reader.readAsText(file, 'utf-8');
+  };
+
+  const handleSaveDict = async (newDict: Record<string, string[]> | undefined) => {
+    setCustomAbbreviations(newDict);
+    setGsAbbreviations(newDict);
+
+    if (newDict === undefined) {
+      await removeFromCache('customAbbreviations');
+      await removeFromCache('gsAbbreviations');
+    } else {
+      await saveToCache('customAbbreviations', newDict);
+      await saveToCache('gsAbbreviations', newDict);
+    }
   };
 
   const toggleExpand = (path: string) => {
@@ -291,7 +385,9 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
         ignoreShamInShas,
         diburHamatchilDelimiter: delimiter,
         useAbbreviationExpansion,
-        customAbbreviations,
+        customAbbreviations: customAbbreviations ?? gsAbbreviations,
+        gsAbbreviations,
+        gsReplacements,
         useFuzzyMatching,
         useWordWeighting
       };
@@ -399,7 +495,15 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
   };
 
   return (
-    <div className="w-full h-[calc(100vh-4.5rem)] p-4 md:p-6 flex flex-col bg-[color-mix(in_srgb,var(--color-surface-container-high)_5%,var(--color-surface))] overflow-hidden" dir="rtl">
+    <div className="relative w-full h-[calc(100vh-4.5rem)] p-4 md:p-6 flex flex-col bg-[color-mix(in_srgb,var(--color-surface-container-high)_5%,var(--color-surface))] overflow-hidden" dir="rtl">
+      {isProcessing && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 px-6 py-5 rounded-[var(--radius-lg)] bg-[var(--color-surface)]/95 shadow-2xl border border-[var(--color-outline-variant)]">
+            <div className="w-16 h-16 rounded-full border-4 border-[var(--color-primary)] border-t-transparent animate-spin" />
+            <span className="text-sm font-bold text-[var(--color-on-surface)]">הרצת האלגוריתם...</span>
+          </div>
+        </div>
+      )}
       <div className="max-w-7xl mx-auto w-full h-full flex flex-col min-h-0">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0 items-stretch">
         
@@ -588,16 +692,16 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
                     <div className="p-4 flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
                         <span className="block text-sm font-bold text-[var(--color-on-surface)]">
-                          האם המילה 'שם' משמשת כהפניה לדף בגמרא?
+                          הפנה לדף הנוכחי במקום לרשת קישור ישיר
                         </span>
                         <span className="block text-xs text-[var(--color-on-surface-variant)]">
-                          במקום ירושת קישור ישיר מהשורה הקודמת
+                          בחר פעולה זו כדי לנתב "שם" כהפניה למקום הנוכחי בגמרא
                         </span>
                       </div>
                       <ToggleSwitch 
                         checked={ignoreShamInShas}
                         onChange={setIgnoreShamInShas}
-                        ariaLabel="הפניה לדף בגמרא"
+                        ariaLabel="הפנה לדף הנוכחי"
                       />
                     </div>
                   )}
@@ -745,8 +849,8 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
       {/* Rashei Teivot Dictionary Modal */}
                   {showAbbrModal && (
         <AbbreviationsModal
-          customDict={customAbbreviations}
-          onSaveDict={(newDict) => setCustomAbbreviations(newDict)}
+          customDict={customAbbreviations ?? gsAbbreviations}
+          onSaveDict={handleSaveDict}
           onClose={() => setShowAbbrModal(false)}
         />
       )}

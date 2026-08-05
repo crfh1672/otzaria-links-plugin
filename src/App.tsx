@@ -90,37 +90,6 @@ export default function App() {
     }
   }, []);
 
-  // Auto-load last active session on mount to prevent running the algorithm twice
-  useEffect(() => {
-    const autoLoadLastSession = async () => {
-      try {
-        const keys = await listCacheKeys();
-        if (keys && keys.length > 0) {
-          let mostRecentSession: SessionState | null = null;
-          let maxTimestamp = 0;
-
-          for (const k of keys) {
-            const item = await getFromCache<SessionState>(k);
-            if (item && item.lastModifiedTimestamp && item.lastModifiedTimestamp > maxTimestamp) {
-              maxTimestamp = item.lastModifiedTimestamp;
-              mostRecentSession = item;
-            }
-          }
-
-          if (mostRecentSession) {
-            setSession(mostRecentSession);
-            setMode('edit');
-            notifySuccess(`נמצא פרויקט שמור: "${mostRecentSession.commentaryTitle}" נטען אוטומטית`);
-          }
-        }
-      } catch (e) {
-        console.warn('Error auto-loading last session:', e);
-      }
-    };
-
-    autoLoadLastSession();
-  }, []);
-
   // Run the 5-Step Parser algorithm and switch to Edit Mode
   const handleRunAlgorithm = (
     commentaryText: string,

@@ -3,8 +3,8 @@
   "id": "com.otzaria.links-generator",
   "name": "מחולל קישורים",
   "version": "1.0.0",
-  "description": "תוסף אוצריא לייצור קישורים (links.json) והדגשת דיבור המתחיל (ד\"ה) בפירושים לטקסט מקור",
-  "author": "מפתח אוצריא",
+  "description": "תוסף אוצריא ליצירת קובץ קישורים (links.json) מפירושים לטקסט מקור"
+  "author": "D9",
   "homepage": "https://github.com/Otzaria/otzaria",
   "entrypoint": "index.html",
   "minAppVersion": "0.9.93",

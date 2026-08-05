@@ -1,17 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { SessionState, OtzariaLink, DHHighlight } from '../types';
+import { SessionState, OtzariaLink } from '../types';
 import { formatLineWithDH, parseDocumentSegments } from '../utils/parserAlgorithm';
 import { EditLinkModal } from './EditLinkModal';
 import {
   Edit3,
-  Plus,
-  Minus,
   GripVertical,
   Link2Off,
   Layers,
   AlertTriangle,
   Info,
-  Eye,
   BookOpen,
   ChevronDown,
   ChevronUp,
@@ -32,24 +29,24 @@ const getTargetColors = (target?: 'rashi' | 'tosafot' | 'primary' | string) => {
   switch (target) {
     case 'rashi':
       return {
-        text: 'text-orange-800 dark:text-orange-300',
-        bgTitle: 'bg-orange-100 dark:bg-orange-950/60',
+        text: 'text-orange-700/90 dark:text-orange-300/90',
+        bgTitle: 'bg-orange-50 dark:bg-orange-950/50',
         bgPanel: 'bg-orange-50/40 dark:bg-orange-950/20',
         borderPanel: 'border-orange-100 dark:border-orange-900/30',
         lineStroke: '#f97316' // orange-500
       };
     case 'tosafot':
       return {
-        text: 'text-purple-800 dark:text-purple-300',
-        bgTitle: 'bg-purple-100 dark:bg-purple-950/60',
+        text: 'text-purple-700/90 dark:text-purple-300/90',
+        bgTitle: 'bg-purple-50 dark:bg-purple-950/50',
         bgPanel: 'bg-purple-50/40 dark:bg-purple-950/20',
         borderPanel: 'border-purple-100 dark:border-purple-900/30',
         lineStroke: '#a855f7' // purple-500
       };
     default:
       return {
-        text: 'text-emerald-800 dark:text-emerald-300',
-        bgTitle: 'bg-emerald-100 dark:bg-emerald-950/60',
+        text: 'text-emerald-700/90 dark:text-emerald-300/90',
+        bgTitle: 'bg-emerald-50 dark:bg-emerald-950/50',
         bgPanel: 'bg-emerald-50/40 dark:bg-emerald-950/20',
         borderPanel: 'border-emerald-100 dark:border-emerald-900/30',
         lineStroke: '#10b981' // emerald-500
@@ -58,7 +55,7 @@ const getTargetColors = (target?: 'rashi' | 'tosafot' | 'primary' | string) => {
 };
 
 
-const CollapsibleText = ({ text, isPrimary, links, targetType, onHoverMatch }: { text: string; isPrimary: boolean; links?: OtzariaLink[]; targetType?: 'rashi' | 'tosafot' | 'primary' | string; onHoverMatch?: (id: number | null) => void }) => {
+const CollapsibleText = ({ text, isPrimary, links, targetType }: { text: string; isPrimary: boolean; links?: OtzariaLink[]; targetType?: 'rashi' | 'tosafot' | 'primary' | string }) => {
   const [isExpanded, setIsExpanded] = useState(isPrimary);
 
   // Parse words and determine highlights if links are provided
@@ -82,11 +79,19 @@ const CollapsibleText = ({ text, isPrimary, links, targetType, onHoverMatch }: {
       if (link.dhText) {
         const range = link.matchRange || findSourceMatchRange(text, link.dhText);
         if (range) {
-          for (let i = 0; i < range.wordCount; i++) {
-            const idx = range.wordStart + i;
-            if (!highlightMap.has(idx)) highlightMap.set(idx, []);
-            highlightMap.get(idx)!.push(link.line_index_1.toString());
-          }
+          // Use disjoint segments when available so an unmatched word sitting between two
+          // matched clusters is never swept into the highlight; otherwise fall back to the
+          // single wordStart/wordCount span (older sessions without segment data).
+          const segs = (range.segments && range.segments.length > 0)
+            ? range.segments
+            : [{ wordStart: range.wordStart, wordCount: range.wordCount }];
+          segs.forEach(seg => {
+            for (let i = 0; i < seg.wordCount; i++) {
+              const idx = seg.wordStart + i;
+              if (!highlightMap.has(idx)) highlightMap.set(idx, []);
+              highlightMap.get(idx)!.push(link.line_index_1.toString());
+            }
+          });
         }
       }
     });
@@ -149,16 +154,7 @@ const CollapsibleText = ({ text, isPrimary, links, targetType, onHoverMatch }: {
               data-source-match-for={linkIdsStr}
               data-target-type={targetType || 'primary'}
               id={uniqueId}
-              onMouseEnter={() => {
-                const firstId = parseInt(linkIdsStr.split(' ')[0], 10);
-                if (!isNaN(firstId) && onHoverMatch) {
-                  onHoverMatch(firstId);
-                }
-              }}
-              onMouseLeave={() => {
-                if (onHoverMatch) onHoverMatch(null);
-              }}
-              className="bg-yellow-200/60 dark:bg-yellow-500/30 hover:bg-yellow-300 dark:hover:bg-yellow-400/50 border border-gray-400 dark:border-gray-600 rounded px-1.5 py-0.5 mx-0.5 transition-all duration-200 cursor-help"
+              className="bg-yellow-200/60 dark:bg-yellow-500/30 border border-gray-400 dark:border-gray-600 rounded px-1.5 py-0.5 mx-0.5"
             >
               {seqWords.join('')}
             </mark>
@@ -184,15 +180,16 @@ const CollapsibleText = ({ text, isPrimary, links, targetType, onHoverMatch }: {
 
   const colors = getTargetColors(targetType);
   return (
-    <div className={`${colors.bgPanel} p-3.5 md:p-4 rounded-xl border ${colors.borderPanel} space-y-2`}>
+    <div className={`${colors.bgPanel} p-3 md:p-3.5 rounded-xl border ${colors.borderPanel} space-y-1.5`}>
       <p className={`text-sm md:text-base font-sans leading-relaxed text-[var(--color-on-surface)] ${!isExpanded ? 'line-clamp-3' : ''}`}>
         {contentNodes}
       </p>
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="text-xs text-[var(--color-primary)] hover:underline font-bold"
+        className={`inline-flex items-center justify-center w-6 h-6 rounded-lg ${colors.text} hover:bg-black/5 dark:hover:bg-white/10 transition-colors`}
+        title={isExpanded ? 'צמצם' : 'הרחב'}
       >
-        {isExpanded ? 'צמצם' : 'הרחב'}
+        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
     </div>
   );
@@ -209,9 +206,10 @@ const CollapsibleCommentary = ({ html }: { html: string }) => {
       />
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="text-xs text-[var(--color-primary)] hover:underline font-bold"
+        className="inline-flex items-center justify-center w-6 h-6 rounded-lg text-[var(--color-primary)] hover:bg-[var(--color-primary-subtle)] transition-colors"
+        title={isExpanded ? 'צמצם' : 'הרחב'}
       >
-        {isExpanded ? 'צמצם' : 'הרחב'}
+        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
     </div>
   );
@@ -238,7 +236,6 @@ export const EditMode: React.FC<EditModeProps> = ({
   const [draggedCommLineIdx, setDraggedCommLineIdx] = useState<number | null>(null);
   const [dragOverSourceIdx, setDragOverSourceIdx] = useState<number | null>(null);
   const [dragOverSourceType, setDragOverSourceType] = useState<'primary' | 'rashi' | 'tosafot' | null>(null);
-  const [hoveredCommLineIdx, setHoveredCommLineIdx] = useState<number | null>(null);
 
   // Filtering & Drawer state
   const [sourceSearchQuery, setSourceSearchQuery] = useState('');
@@ -338,8 +335,7 @@ export const EditMode: React.FC<EditModeProps> = ({
   const [drawerSearchQuery, setDrawerSearchQuery] = useState('');
 
   // Floating Warning Widget state
-  const [isUnlinkedDrawerOpen, setIsUnlinkedDrawerOpen] = useState(false);
-  const [isWidgetMinimized, setIsWidgetMinimized] = useState(false);
+  const [isUnlinkedPanelOpen, setIsUnlinkedPanelOpen] = useState(false);
 
   // Bulk actions for confidence & approval
   const handleApproveAllHighConfidence = () => {
@@ -592,25 +588,6 @@ export const EditMode: React.FC<EditModeProps> = ({
     return groups;
   }, [sortedCommentaryIndices, links]);
 
-  // Update DH Highlight word count (+1 or -1)
-  const handleAdjustDH = (commLineIdx1: number, delta: number) => {
-    const current = dhHighlights[commLineIdx1] || { wordStart: 0, wordCount: 3 };
-    const lineText = commentaryLines[commLineIdx1 - 1] || '';
-    const totalWords = lineText.trim().split(/\s+/).filter(Boolean).length;
-
-    const newCount = Math.max(0, Math.min(totalWords, current.wordCount + delta));
-    const newHighlights: Record<number, DHHighlight> = {
-      ...dhHighlights,
-      [commLineIdx1]: { ...current, wordCount: newCount }
-    };
-
-    onUpdateSession({
-      ...session,
-      dhHighlights: newHighlights,
-      lastModifiedTimestamp: Date.now()
-    });
-  };
-
   // Add / Update / Remove Link
   const handleSaveLink = (
     commLineIdx1: number,
@@ -744,11 +721,11 @@ export const EditMode: React.FC<EditModeProps> = ({
     const isUnlinked = !linkObj;
     const isInherited = linkObj?.isInherited;
 
-    let bgStyle = "bg-[var(--color-surface-container-high)] text-[var(--color-on-surface)] border-[var(--color-outline)]";
+    let bgStyle = "bg-transparent text-[var(--color-on-surface)] border-[var(--color-outline-variant)]";
     if (isUnlinked) {
       bgStyle = "bg-rose-50/80 dark:bg-rose-950/30 text-rose-950 dark:text-rose-100 border-rose-300/80 dark:border-rose-900/60";
     } else if (isInherited) {
-      bgStyle = "bg-[var(--color-primary-subtle)] text-[var(--color-on-surface)] border-[var(--color-outline)]";
+      bgStyle = "bg-[var(--color-surface-container-high)] text-[var(--color-on-surface)] border-[var(--color-outline)]";
     }
 
     const formattedHtml = formatLineWithDH(rawLineText, highlight, `comm-match-${lineIdx1}`, false);
@@ -760,114 +737,89 @@ export const EditMode: React.FC<EditModeProps> = ({
         draggable
         onDragStart={() => handleDragStart(lineIdx1)}
         onDragEnd={() => setDraggedCommLineIdx(null)}
-        onMouseEnter={() => setHoveredCommLineIdx(lineIdx1)}
-        onMouseLeave={() => setHoveredCommLineIdx(null)}
-        className={`group relative p-4 md:p-5 rounded-2xl border shadow-2xs transition-all ${bgStyle} hover:shadow-xs hover:border-[var(--color-primary)] space-y-2.5`}
+        className={`group relative p-3 md:p-3.5 rounded-xl border shadow-2xs transition-all duration-200 ${bgStyle} hover:shadow-md hover:-translate-y-0.5 hover:border-[var(--color-primary)] space-y-2`}
       >
         {/* Top Indicators */}
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--color-on-surface-variant)]">
-          <div className="flex flex-wrap items-center gap-2 font-mono font-bold text-xs md:text-sm">
-            <GripVertical className="w-4 h-4 text-[var(--color-on-surface-variant)] cursor-grab active:cursor-grabbing opacity-70" />
-            <span>שורה {lineIdx1}</span>
+        <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs text-[var(--color-on-surface-variant)]">
+          <div className="flex flex-wrap items-center gap-1.5 font-mono font-bold text-xs">
+            <GripVertical className="w-3.5 h-3.5 text-[var(--color-on-surface-variant)] cursor-grab active:cursor-grabbing opacity-60" />
+            <span title={`שורה ${lineIdx1}`}>{lineIdx1}</span>
             {isInherited && (
-              <span className="bg-[var(--color-primary)] text-[var(--color-on-primary)] text-xs px-2 py-0.5 rounded-md font-semibold flex items-center gap-1">
-                <Info className="w-3.5 h-3.5" />
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[var(--color-primary)] text-[var(--color-on-primary)] text-[10px] font-bold"
+                title="שורה זו יורשת את הקישור משורה קודמת"
+              >
+                <Info className="w-3 h-3" />
                 <span>ירושת הקשר</span>
               </span>
             )}
             {isUnlinked && (
-              <span className="bg-rose-200/90 dark:bg-rose-900/80 text-rose-900 dark:text-rose-100 text-xs px-2 py-0.5 rounded-md font-semibold flex items-center gap-1">
-                <AlertTriangle className="w-3.5 h-3.5" />
-                <span>ללא מקור מקושר</span>
+              <span
+                className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-rose-200/90 dark:bg-rose-900/80 text-rose-900 dark:text-rose-100"
+                title="ללא מקור מקושר"
+              >
+                <AlertTriangle className="w-3 h-3" />
               </span>
             )}
+
 
             {/* Confidence Score & Approval Badge */}
             {linkObj && (
               <button
                 type="button"
                 onClick={() => handleToggleLinkApproval(lineIdx1)}
-                className={`inline-flex items-center justify-center p-1.5 rounded-xl font-bold border transition-colors ${
+                className={`inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded-lg font-bold border transition-colors ${
                   (linkObj.status === 'approved' || !linkObj.status)
                     ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300'
                     : 'bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300'
                 }`}
-                title="לחץ לשינוי סטטוס אישור הקישור"
+                title={`${linkObj.confidence ?? 85}% ודאות · לחץ לשינוי סטטוס אישור הקישור`}
               >
-                <CheckCircle2 className={`w-3.5 h-3.5 ${(linkObj.status === 'approved' || !linkObj.status) ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'}`} />
-                
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono ${
-                  (linkObj.confidence ?? 85) >= 80
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
-                    : (linkObj.confidence ?? 85) >= 65
-                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'
-                    : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200'
-                }`}>
-                  {linkObj.confidence ?? 85}% ודאות
+                <CheckCircle2 className={`w-3 h-3 ${(linkObj.status === 'approved' || !linkObj.status) ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'}`} />
+                <span className="text-[10px] font-mono">
+                  {linkObj.confidence ?? 85}%
                 </span>
               </button>
             )}
           </div>
 
           {/* Floating Actions */}
-          <div className="opacity-90 group-hover:opacity-100 flex items-center gap-1.5 transition-opacity">
+          <div className="opacity-90 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
             {/* Cycle Top-K candidate button — only shown when multiple candidates exist */}
             {linkObj && linkObj.candidates && linkObj.candidates.length > 1 && (
               <button
                 type="button"
                 onClick={() => handleCycleCandidate(lineIdx1)}
-                className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-xl hover:bg-[var(--color-primary-subtle)] hover:border-[var(--color-primary)] text-[var(--color-primary)] transition-colors"
-                title={`עבור למועמד הבא (${(linkObj.candidateIndex ?? 0) + 1}/${linkObj.candidates.length})`}
+                className="relative inline-flex items-center justify-center w-7 h-7 bg-[var(--color-surface)] border border-[var(--color-outline)] rounded-lg hover:bg-[var(--color-primary-subtle)] hover:border-[var(--color-primary)] text-[var(--color-primary)] transition-colors"
+                title={`מועמד הבא (${(linkObj.candidateIndex ?? 0) + 1}/${linkObj.candidates.length})`}
               >
-                <Layers className="w-3 h-3" />
-                <span>מועמד {(linkObj.candidateIndex ?? 0) + 1}/{linkObj.candidates.length}</span>
+                <Layers className="w-3.5 h-3.5" />
+                <span className="absolute -bottom-1 -left-1 text-[8px] font-mono font-bold bg-[var(--color-primary)] text-[var(--color-on-primary)] rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
+                  {(linkObj.candidateIndex ?? 0) + 1}
+                </span>
               </button>
             )}
-
-            {/* DH Word Highlight Controls */}
-            <div className="flex items-center gap-1 bg-[var(--color-surface)] p-1 rounded-xl border border-[var(--color-outline)]">
-              <span className="text-xs font-medium text-[var(--color-on-surface-variant)] px-1.5">
-                ד"ה ({highlight.wordCount} מילים)
-              </span>
-              <button
-                type="button"
-                onClick={() => handleAdjustDH(lineIdx1, 1)}
-                className="p-1 hover:bg-[var(--color-secondary-subtle)] rounded-lg text-[var(--color-primary)]"
-                title="הוסף מילה להדגשת דיבור המתחיל"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleAdjustDH(lineIdx1, -1)}
-                className="p-1 hover:bg-[var(--color-secondary-subtle)] rounded-lg text-rose-600 dark:text-rose-400"
-                title="הסר מילה מהדגשת דיבור המתחיל"
-              >
-                <Minus className="w-3.5 h-3.5" />
-              </button>
-            </div>
 
             {/* Direct Edit Button */}
             <button
               onClick={() => setEditingCommLineIdx(lineIdx1)}
-              className="p-1.5 hover:bg-[var(--color-primary-subtle)] text-[var(--color-primary)] rounded-xl transition-colors border border-transparent hover:border-[var(--color-outline)]"
+              className="inline-flex items-center justify-center w-7 h-7 hover:bg-[var(--color-primary-subtle)] text-[var(--color-primary)] rounded-lg transition-colors border border-transparent hover:border-[var(--color-outline)]"
               title="ערוך קישור ידנית"
             >
-              <Edit3 className="w-4 h-4" />
+              <Edit3 className="w-3.5 h-3.5" />
             </button>
 
             {!isUnlinked && (
               <button
                 onClick={() => handleSaveLink(lineIdx1, null)}
-                className="p-1.5 hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-xl transition-colors border border-transparent hover:border-rose-200"
+                className="inline-flex items-center justify-center w-7 h-7 hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-lg transition-colors border border-transparent hover:border-rose-200"
                 title="נתק קישור"
               >
-                <Link2Off className="w-4 h-4" />
+                <Link2Off className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
         </div>
-
 
         {/* Text with <b> highlighting */}
         {(() => {
@@ -908,28 +860,23 @@ export const EditMode: React.FC<EditModeProps> = ({
       <div
         id={headerId}
         key={`seg-banner-${seg.headerLineIndex || seg.startLine}`}
-        className={`my-5 p-4 md:p-5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-[var(--color-primary-subtle)] to-transparent border-r-4 border-[var(--color-primary)] shadow-xs transition-all flex flex-wrap items-center justify-between gap-3 ${
+        className={`my-2 px-3 md:px-3.5 py-2 border-y bg-[var(--color-primary-subtle)] border-[var(--color-outline-variant)] transition-all flex items-center justify-between gap-2 ${
           isHighlighted
-            ? 'ring-4 ring-amber-400 dark:ring-amber-500 animate-pulse scale-[1.01] bg-amber-500/20'
+            ? 'ring-2 ring-inset ring-amber-400 dark:ring-amber-500 animate-pulse bg-amber-500/20'
             : ''
         }`}
       >
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-[var(--color-primary)] text-[var(--color-on-primary)] shadow-2xs">
-            <Bookmark className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-base md:text-lg font-bold text-[var(--color-on-surface)] font-serif">
-              {seg.headerTitle}
-            </h3>
-            <p className="text-xs text-[var(--color-on-surface-variant)] mt-0.5 font-medium">
-              שורות {seg.startLine} עד {seg.endLine}
-            </p>
-          </div>
+        <div className="min-w-0">
+          <h3 className="text-sm md:text-base font-semibold text-[var(--color-on-surface)]/90 font-serif truncate">
+            {seg.headerTitle}
+          </h3>
+          <p className="text-[11px] text-[var(--color-on-surface-variant)] mt-0.5 font-medium">
+            שורות {seg.startLine} עד {seg.endLine}
+          </p>
         </div>
         {seg.headerLineIndex > 0 && (
-          <span className="text-xs font-mono font-bold px-3 py-1 rounded-xl bg-[var(--color-surface)] border border-[var(--color-outline)] text-[var(--color-primary)] shadow-2xs">
-            כותרת בשורה {seg.headerLineIndex}
+          <span className="text-[11px] font-mono font-bold text-[var(--color-on-surface-variant)] shrink-0">
+            שורה {seg.headerLineIndex}
           </span>
         )}
       </div>
@@ -937,46 +884,23 @@ export const EditMode: React.FC<EditModeProps> = ({
   };
 
   return (
-    <div className="space-y-6 pb-24 text-right" dir="rtl">
+    <div className="space-y-3 pb-24 text-right" dir="rtl">
       {/* Main Unified List */}
-      <div className="space-y-4 relative" ref={containerRef}>
+      <div className="space-y-2 relative" ref={containerRef}>
         <svg className="absolute inset-0 pointer-events-none z-10" style={{ width: '100%', height: '100%' }}>
           {svgLines.map(line => {
-            const lineIdNum = parseInt(line.id.replace('line-', ''), 10);
-            const isHovered = hoveredCommLineIdx === lineIdNum;
-            const isAnyHovered = hoveredCommLineIdx !== null;
-            
             const offset = Math.abs(line.x1 - line.x2) / 2;
             const pathData = `M ${line.x1} ${line.y1} C ${line.x1 - offset} ${line.y1}, ${line.x2 + offset} ${line.y2}, ${line.x2} ${line.y2}`;
-            
-            let opacity = "0.55";
-            let strokeWidth = "2.5";
-            if (isAnyHovered) {
-              opacity = isHovered ? "0.95" : "0.15";
-              strokeWidth = isHovered ? "3.5" : "1.5";
-            }
 
             return (
-              <g key={line.id}>
-                {isHovered && (
-                  <path
-                    d={pathData}
-                    stroke={line.color || "var(--color-primary)"}
-                    strokeWidth="7"
-                    fill="none"
-                    opacity="0.2"
-                    className="transition-all duration-300 animate-pulse"
-                  />
-                )}
-                <path 
-                  d={pathData} 
-                  stroke={line.color || "var(--color-primary)"}
-                  strokeWidth={strokeWidth} 
-                  fill="none"
-                  opacity={opacity}
-                  className="transition-all duration-300"
-                />
-              </g>
+              <path
+                key={line.id}
+                d={pathData}
+                stroke={line.color || "var(--color-primary)"}
+                strokeWidth="2"
+                fill="none"
+                opacity="0.45"
+              />
             );
           })}
         </svg>
@@ -993,35 +917,32 @@ export const EditMode: React.FC<EditModeProps> = ({
               <React.Fragment key={`comm-group-wrap-${group.targetKey}-${gIdx}`}>
                 {renderSegmentHeaderIfNeeded(firstCommIdx, gIdx)}
                 <div
-                  className="grid grid-cols-1 md:grid-cols-12 gap-4 p-5 rounded-2xl border bg-[var(--color-surface)] border-[var(--color-outline-variant)] shadow-2xs transition-all"
+                  className="grid grid-cols-1 md:grid-cols-12 gap-2.5 p-2.5 md:p-3 rounded-xl border bg-[var(--color-surface)] border-[var(--color-outline-variant)] shadow-2xs hover:shadow-xs transition-all"
                 >
                   {/* Primary Commentary Lines (7 Cols) */}
-                  <div className="md:col-span-7 space-y-3">
-                    <div className="flex items-center justify-between text-xs font-bold text-[var(--color-primary)]">
-                      <span>פירושים ({group.commIndices.length})</span>
-                    </div>
+                  <div className="md:col-span-7 space-y-1.5">
                     {group.links.map((linkObj, idx) => (
                       renderCommentaryBox(linkObj, group.commIndices[idx])
                     ))}
                   </div>
 
                   {/* Target Source Line (5 Cols) */}
-                  <div className="md:col-span-5 border-t md:border-t-0 md:border-l border-[var(--color-outline)] pt-4 md:pt-0 pl-0 md:pl-4 space-y-2">
+                  <div className="md:col-span-5 border-t md:border-t-0 md:border-l border-[var(--color-outline)] pt-2.5 md:pt-0 pl-0 md:pl-3 space-y-1">
                     {(() => {
                       const targetType = firstLinkObj?.secondaryTarget || 'primary';
                       const colors = getTargetColors(targetType);
                       return (
                     <>
-                    <div className={`flex flex-wrap items-center justify-between gap-1 text-xs font-bold ${colors.text}`}>
+                    <div className={`flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs font-bold ${colors.text}`}>
                       {firstLinkObj ? (
-                        <>
-                          <span className="font-bold">
-                            מקור: {firstLinkObj.secondaryTarget ? (firstLinkObj.secondaryTarget === 'rashi' ? 'רש"י' : 'תוספות') : config.targetBookName} (שורה {firstLinkObj.secondaryTarget ? firstLinkObj.secondary_line_index : firstLinkObj.line_index_2})
-                          </span>
-                          <span className={`text-[11px] ${colors.bgTitle} px-2 py-0.5 rounded-md ${colors.text} font-bold max-w-[180px] truncate`} title={firstLinkObj.secondaryRef || firstLinkObj.heRef_2 || firstLinkObj.path_2}>
-                            {firstLinkObj.secondaryRef || firstLinkObj.heRef_2 || (firstLinkObj.secondaryTarget ? (firstLinkObj.secondaryTarget === 'rashi' ? 'רש"י' : 'תוספות') : config.targetBookName)}
-                          </span>
-                        </>
+                        <span className="truncate">
+                          מקור: {firstLinkObj.secondaryTarget ? (firstLinkObj.secondaryTarget === 'rashi' ? 'רש"י' : 'תוספות') : config.targetBookName} (שורה {firstLinkObj.secondaryTarget ? firstLinkObj.secondary_line_index : firstLinkObj.line_index_2})
+                          {(firstLinkObj.secondaryRef || firstLinkObj.heRef_2 || firstLinkObj.path_2) && (
+                            <span className="font-medium text-[var(--color-on-surface-variant)]">
+                              {' '}· {firstLinkObj.secondaryRef || firstLinkObj.heRef_2 || firstLinkObj.path_2}
+                            </span>
+                          )}
+                        </span>
                       ) : (
                         <>
                           <span>מקור מקושר</span>
@@ -1042,7 +963,6 @@ export const EditMode: React.FC<EditModeProps> = ({
                         isPrimary={!firstLinkObj.secondaryTarget}
                         links={group.links}
                         targetType={targetType}
-                        onHoverMatch={setHoveredCommLineIdx}
                       />
                     ) : (
                       <div className="p-5 rounded-xl border border-dashed border-[var(--color-outline)] text-center text-xs text-[var(--color-on-surface-variant)]">
@@ -1061,43 +981,42 @@ export const EditMode: React.FC<EditModeProps> = ({
 
       </div>
 
-      {/* Floating Unlinked Lines Alert Widget */}
-      <div className="fixed bottom-5 right-5 z-40 max-w-sm sm:max-w-md w-[calc(100%-2.5rem)] transition-all">
-        {unlinkedCommLines.length > 0 ? (
-          <div className="bg-[var(--color-surface)] border-2 border-rose-400 dark:border-rose-800 rounded-2xl p-3.5 shadow-2xl backdrop-blur-md space-y-2.5">
-            {/* Top Bar */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-rose-900 dark:text-rose-200">
-                <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 animate-pulse" />
-                <span>ישנן {unlinkedCommLines.length} שורות לא מקושרות</span>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setIsUnlinkedDrawerOpen(!isUnlinkedDrawerOpen)}
-                  className="p-1.5 text-xs font-bold bg-rose-100 dark:bg-rose-950/80 text-rose-900 dark:text-rose-100 hover:bg-rose-200 dark:hover:bg-rose-900 rounded-xl transition-colors inline-flex items-center justify-center"
-                  title="הצג שורות לא מקושרות"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  
-                </button>
-
-                
-
-                <button
-                  onClick={() => setIsWidgetMinimized(!isWidgetMinimized)}
-                  className="p-1 text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)] rounded-lg transition-colors"
-                  title={isWidgetMinimized ? "הרחב חלונית" : "מזער חלונית"}
-                >
-                  {isWidgetMinimized ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                </button>
-              </div>
+      {/* Floating Unlinked Lines Widget */}
+      <div className="fixed bottom-5 right-5 z-40">
+        {isUnlinkedPanelOpen ? (
+          <div
+            className={`bg-[var(--color-surface)] rounded-2xl shadow-2xl backdrop-blur-md flex flex-col max-w-sm sm:max-w-md w-[calc(100vw-2.5rem)] max-h-[70vh] border-2 ${
+              unlinkedCommLines.length > 0
+                ? 'border-rose-400 dark:border-rose-800'
+                : 'border-emerald-400 dark:border-emerald-800'
+            }`}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-2 p-3.5 border-b border-[var(--color-outline)] shrink-0">
+              {unlinkedCommLines.length > 0 ? (
+                <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-rose-900 dark:text-rose-200 min-w-0">
+                  <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
+                  <span className="truncate">ישנן {unlinkedCommLines.length} שורות לא מקושרות</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-emerald-800 dark:text-emerald-300">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>כל שורות הפירוש מקושרות בהצלחה!</span>
+                </div>
+              )}
+              <button
+                onClick={() => setIsUnlinkedPanelOpen(false)}
+                className="inline-flex items-center justify-center w-7 h-7 text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)] rounded-lg transition-colors shrink-0"
+                title="סגור"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            {/* Expanded Drawer list inside float */}
-            {!isWidgetMinimized && isUnlinkedDrawerOpen && (
-              <div className="pt-2.5 border-t border-[var(--color-outline)] space-y-2.5 max-h-72 overflow-y-auto pl-1">
-                <p className="text-xs text-[var(--color-on-surface-variant)] mb-2 font-medium">
+            {/* List */}
+            {unlinkedCommLines.length > 0 && (
+              <div className="p-3.5 space-y-2.5 overflow-y-auto">
+                <p className="text-xs text-[var(--color-on-surface-variant)] font-medium">
                   לחץ עריכה כדי לקשר שורות פירוש ללא מקור:
                 </p>
                 {unlinkedCommLines.map(un => renderCommentaryBox(undefined, un.lineIndex1))}
@@ -1105,20 +1024,24 @@ export const EditMode: React.FC<EditModeProps> = ({
             )}
           </div>
         ) : (
-          !isWidgetMinimized && (
-            <div className="bg-[var(--color-surface)] border border-emerald-400 dark:border-emerald-800 rounded-2xl p-3 shadow-xl backdrop-blur-md flex items-center justify-between gap-2 text-xs sm:text-sm font-bold text-emerald-800 dark:text-emerald-300">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>כל שורות הפירוש מקושרות בהצלחה!</span>
-              </div>
-              <button
-                onClick={() => setIsWidgetMinimized(true)}
-                className="p-1 text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)] rounded-lg"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )
+          <button
+            onClick={() => setIsUnlinkedPanelOpen(true)}
+            className={`inline-flex items-center gap-1.5 h-10 px-3 rounded-full shadow-xl backdrop-blur-md border-2 transition-transform hover:scale-105 ${
+              unlinkedCommLines.length > 0
+                ? 'bg-rose-50 dark:bg-rose-950/80 border-rose-400 dark:border-rose-800 text-rose-900 dark:text-rose-100'
+                : 'bg-[var(--color-surface)] border-emerald-400 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+            }`}
+            title={unlinkedCommLines.length > 0 ? `ישנן ${unlinkedCommLines.length} שורות לא מקושרות` : 'כל שורות הפירוש מקושרות בהצלחה!'}
+          >
+            {unlinkedCommLines.length > 0 ? (
+              <>
+                <AlertTriangle className="w-4 h-4" />
+                <span className="text-xs font-bold font-mono">{unlinkedCommLines.length}</span>
+              </>
+            ) : (
+              <CheckCircle2 className="w-4 h-4" />
+            )}
+          </button>
         )}
       </div>
 
@@ -1178,23 +1101,25 @@ export const EditMode: React.FC<EditModeProps> = ({
               <div className="flex items-center border-b border-[var(--color-outline)]">
                 <button
                   onClick={() => setDrawerTab('nav')}
-                  className={`flex-1 py-2 text-xs font-bold transition-colors ${
+                  className={`flex-1 flex items-center justify-center py-2.5 transition-colors ${
                     drawerTab === 'nav'
                       ? 'border-b-2 border-[var(--color-primary)] text-[var(--color-primary)]'
                       : 'text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)]'
                   }`}
+                  title="ניווט"
                 >
-                  ניווט
+                  <ListTree className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => setDrawerTab('search')}
-                  className={`flex-1 py-2 text-xs font-bold transition-colors ${
+                  className={`flex-1 flex items-center justify-center py-2.5 transition-colors ${
                     drawerTab === 'search'
                       ? 'border-b-2 border-[var(--color-primary)] text-[var(--color-primary)]'
                       : 'text-[var(--color-on-surface-variant)] hover:bg-[var(--color-secondary-subtle)]'
                   }`}
+                  title="חיפוש"
                 >
-                  חיפוש
+                  <Search className="w-4 h-4" />
                 </button>
               </div>
             </div>
