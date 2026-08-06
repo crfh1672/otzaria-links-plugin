@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { BookNode, PluginConfig, TANAKH_BOOKS, SHAS_TRACTATES } from '../types';
 import { MOCK_LIBRARY_TREE } from '../data/otzariaLibraryMock';
 import { fetchLibraryTree, fetchBookContent, fetchBookLinks, notifyError, notifySuccess, saveToCache, getFromCache, removeFromCache } from '../utils/otzariaBridge';
-import { loadGsDictionary } from '../utils/gsDictionary';
 import { AbbreviationsModal } from './AbbreviationsModal';
 import { ToggleSwitch } from './ToggleSwitch';
 import {
@@ -84,30 +83,33 @@ export const SetupMode: React.FC<SetupModeProps> = ({ onRunAlgorithm }) => {
   }, [category]);
 
   useEffect(() => {
+    // Only restore a dictionary the user explicitly uploaded/saved before
+    // (via the "טען קובץ JSON" button in AbbreviationsModal). There is no
+    // automatic loading from a file in the app folder — network is disabled
+    // for this plugin (see manifest.json), and file:// blocks fetch() anyway,
+    // so that path never worked and has been removed rather than left dormant.
+    const hasEntries = (d: Record<string, string[]> | null | undefined): d is Record<string, string[]> =>
+      !!d && Object.keys(d).length > 0;
+
     const loadGs = async () => {
       try {
         const cachedCustomAbbreviations = await getFromCache<Record<string, string[]>>('customAbbreviations');
         const cachedAbbreviations = await getFromCache<Record<string, string[]>>('gsAbbreviations');
         const cachedReplacements = await getFromCache<Record<string, string[]>>('gsReplacements');
-        const gsDict = await loadGsDictionary();
 
-        if (cachedCustomAbbreviations) {
+        if (hasEntries(cachedCustomAbbreviations)) {
           setCustomAbbreviations(cachedCustomAbbreviations);
         }
 
-        if (cachedAbbreviations) {
+        if (hasEntries(cachedAbbreviations)) {
           setGsAbbreviations(cachedAbbreviations);
-        } else if (gsDict?.abbreviations) {
-          setGsAbbreviations(gsDict.abbreviations);
         }
 
-        if (cachedReplacements) {
+        if (hasEntries(cachedReplacements)) {
           setGsReplacements(cachedReplacements);
-        } else if (gsDict?.replacements) {
-          setGsReplacements(gsDict.replacements);
         }
       } catch (err) {
-        console.warn('Failed to load GS dictionary:', err);
+        console.warn('Failed to load cached abbreviations dictionary:', err);
       } finally {
         setGsSourceLoaded(true);
       }
